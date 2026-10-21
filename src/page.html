@@ -1,0 +1,1028 @@
+<title>像素皮膚工坊</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen&family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@400;600&display=swap">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/htm@3.1.1/dist/htm.umd.js"></script>
+<style>
+/* Layout: AI-tool landing page — nav, centered hero, one big generator card (settings left, preview right), then steps, features, FAQ */
+:root{
+  --bg:#ffffff; --soft:#fffbe6; --panel:#ffffff; --panel-2:#f7f7f9; --ink:#16171b; --muted:#5e6270; --line:#e9e9ef;
+  --accent:#ffd02e; --accent-strong:#f2b705; --accent-ink:#1c1a10; --accent-soft:#fff3c2;
+  --check-a:#ececf1; --check-b:#f8f8fa; --grid:#d39b00; --overlay-grid:#a3a6b2; --ok:#1d8a55; --warn:#b4541b;
+  --shadow:0 1px 2px rgba(20,20,30,.05),0 8px 28px rgba(20,20,30,.07);
+  --font-display:"Silkscreen", ui-monospace, monospace;
+  --font-body:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#101115; --soft:#17160f; --panel:#18191e; --panel-2:#202128; --ink:#f0f0f3; --muted:#a2a5b2; --line:#2a2b33;
+  --accent:#ffd02e; --accent-strong:#ffdc5c; --accent-ink:#1c1a10; --accent-soft:#3a3214;
+  --check-a:#24252c; --check-b:#1b1c22; --grid:#ffd02e; --overlay-grid:#666a78; --ok:#4fd08f; --warn:#ef9a62;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 28px rgba(0,0,0,.35); color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#101115; --soft:#17160f; --panel:#18191e; --panel-2:#202128; --ink:#f0f0f3; --muted:#a2a5b2; --line:#2a2b33;
+  --accent:#ffd02e; --accent-strong:#ffdc5c; --accent-ink:#1c1a10; --accent-soft:#3a3214;
+  --check-a:#24252c; --check-b:#1b1c22; --grid:#ffd02e; --overlay-grid:#666a78; --ok:#4fd08f; --warn:#ef9a62;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 28px rgba(0,0,0,.35); color-scheme:dark;
+}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.65}
+.wrap{max-width:1200px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1,h2,h3{text-wrap:balance}
+.pixel{font-family:var(--font-display);letter-spacing:.04em}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow)}
+.sub{background:var(--panel-2);border:1px solid var(--line);border-radius:14px}
+.label{font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px}
+.label small{font-weight:400;color:var(--muted);font-size:12px}
+.checker{background-color:var(--check-b);background-image:
+  linear-gradient(45deg,var(--check-a) 25%,transparent 25%,transparent 75%,var(--check-a) 75%),
+  linear-gradient(45deg,var(--check-a) 25%,transparent 25%,transparent 75%,var(--check-a) 75%);
+  background-size:16px 16px;background-position:0 0,8px 8px}
+canvas.px,img.px{image-rendering:pixelated;image-rendering:crisp-edges}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border-radius:999px;font-weight:700;cursor:pointer;transition:transform .08s,background .15s,box-shadow .15s}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:var(--accent);color:var(--accent-ink);padding:14px 22px;box-shadow:0 6px 18px color-mix(in srgb,var(--accent) 45%,transparent)}
+.btn-primary:hover{background:var(--accent-strong)}
+.btn-primary:disabled{opacity:.6;cursor:progress}
+.btn-dark{background:var(--ink);color:var(--bg);padding:10px 18px}
+.btn-ghost{border:1px solid var(--line);color:var(--ink);padding:8px 14px;background:var(--panel);font-weight:500}
+.btn-ghost:hover{background:var(--accent-soft)}
+.chip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 12px;font-size:13px;background:var(--accent-soft);color:var(--ink)}
+:focus-visible{outline:2px solid var(--accent-strong);outline-offset:2px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:var(--panel)}
+.seg button{padding:6px 14px;font-size:13px;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.drop{border:2px dashed var(--line);border-radius:16px;background:var(--panel-2);transition:border-color .15s,background .15s}
+.drop.on{border-color:var(--accent-strong);background:var(--accent-soft)}
+.cropbox{position:absolute;border:2px solid var(--accent);box-shadow:0 0 0 9999px rgba(0,0,0,.42);cursor:move;touch-action:none}
+.cropbox .grid8{position:absolute;inset:0;pointer-events:none;
+  background-image:linear-gradient(to right,rgba(255,255,255,.4) 1px,transparent 1px),linear-gradient(to bottom,rgba(255,255,255,.4) 1px,transparent 1px);background-size:12.5% 12.5%}
+.cropbox .handle{position:absolute;right:-10px;bottom:-10px;width:20px;height:20px;border-radius:6px;background:var(--accent);border:2px solid #fff;cursor:nwse-resize;touch-action:none}
+.cropbox .tag{position:absolute;left:-2px;top:-22px;background:var(--accent);color:var(--accent-ink);font-size:10px;padding:2px 6px;white-space:nowrap;border-radius:4px 4px 0 0}
+.styles{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;padding:4px 2px 10px}
+.style-card{flex:0 0 112px;scroll-snap-align:start;border:2px solid var(--line);border-radius:14px;background:var(--panel);padding:8px;cursor:pointer;text-align:center;transition:border-color .15s,transform .15s}
+.style-card:hover{transform:translateY(-2px)}
+.style-card[aria-pressed="true"]{border-color:var(--accent-strong);background:var(--accent-soft)}
+textarea,input[type=text]{width:100%;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--ink);padding:10px 12px;font:inherit;resize:vertical}
+input[type=color]{width:38px;height:32px;border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:2px;cursor:pointer}
+input[type=range]{accent-color:var(--accent-strong)}
+details.faq{border-bottom:1px solid var(--line)}
+details.faq summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;gap:16px;padding:18px 0;font-weight:700}
+details.faq summary::-webkit-details-marker{display:none}
+details.faq summary::after{content:"+";font-size:22px;line-height:1;color:var(--muted)}
+details.faq[open] summary::after{content:"−"}
+.step-n{width:40px;height:40px;border-radius:12px;background:var(--accent);color:var(--accent-ink);display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:18px}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:999px;font-size:14px;max-width:calc(100% - 32px);z-index:20;box-shadow:var(--shadow)}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;scroll-behavior:auto!important}}
+</style>
+
+<div id="root"></div>
+
+<script>
+(function(){
+const {useState,useEffect,useRef,useMemo,useCallback} = React;
+const html = htm.bind(React.createElement);
+
+/* ---------- color helpers ---------- */
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const one=c=>Array.isArray(c[0])?c[0]:c;
+const toHex=c=>'#'+one(c).map(v=>clamp(Math.round(v),0,255).toString(16).padStart(2,'0')).join('');
+const fromHex=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
+const mul=(c,f)=>c.map(v=>clamp(v*f,0,255));
+const lum=c=>.3*c[0]+.59*c[1]+.11*c[2];
+const mix=(a,b,t)=>a.map((v,i)=>v+(b[i]-v)*t);
+const sat=(c,k)=>{const l=lum(c);return c.map(v=>clamp(l+(v-l)*k,0,255));};
+function isSkin(r,g,b){
+  const y=.299*r+.587*g+.114*b, cb=128-.1687*r-.3313*g+.5*b, cr=128+.5*r-.4187*g-.0813*b;
+  return cr>=135&&cr<=175&&cb>=78&&cb<=130&&r>g&&r>b&&y>55;
+}
+
+/* ---------- image analysis ---------- */
+function analyze(img){
+  const k=Math.min(1,512/Math.max(img.naturalWidth,img.naturalHeight));
+  const w=Math.max(1,Math.round(img.naturalWidth*k)), h=Math.max(1,Math.round(img.naturalHeight*k));
+  const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+  const ctx=cv.getContext('2d',{willReadFrequently:true});
+  ctx.drawImage(img,0,0,w,h);
+  return {w,h,d:ctx.getImageData(0,0,w,h).data};
+}
+function clipBox(an,x0,y0,x1,y1){
+  x0=clamp(Math.floor(x0),0,an.w); y0=clamp(Math.floor(y0),0,an.h);
+  x1=clamp(Math.ceil(x1),0,an.w); y1=clamp(Math.ceil(y1),0,an.h);
+  return (x1-x0<2||y1-y0<2)?null:[x0,y0,x1,y1];
+}
+function avgBox(an,x0,y0,x1,y1){
+  x0=clamp(Math.floor(x0),0,an.w-1); y0=clamp(Math.floor(y0),0,an.h-1);
+  x1=clamp(Math.max(x0+1,Math.round(x1)),1,an.w); y1=clamp(Math.max(y0+1,Math.round(y1)),1,an.h);
+  let r=0,g=0,b=0,a=0,n=0;
+  for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++){
+    const i=(y*an.w+x)*4, al=an.d[i+3]; r+=an.d[i]*al; g+=an.d[i+1]*al; b+=an.d[i+2]*al; a+=al; n++;
+  }
+  return a?[r/a,g/a,b/a,a/n]:[0,0,0,0];
+}
+function dominant(an,box,excludeSkin){
+  const c=clipBox(an,...box); if(!c) return null;
+  const [x0,y0,x1,y1]=c, step=Math.max(1,Math.floor(Math.sqrt((x1-x0)*(y1-y0)/4000)));
+  const buckets=new Map(); let total=0;
+  for(let y=y0;y<y1;y+=step)for(let x=x0;x<x1;x+=step){
+    const i=(y*an.w+x)*4; if(an.d[i+3]<128) continue;
+    const R=an.d[i],G=an.d[i+1],B=an.d[i+2];
+    if(excludeSkin&&isSkin(R,G,B)) continue;
+    const key=(R>>5)<<6|(G>>5)<<3|(B>>5);
+    let e=buckets.get(key); if(!e){e={n:0,r:0,g:0,b:0};buckets.set(key,e);}
+    e.n++; e.r+=R; e.g+=G; e.b+=B; total++;
+  }
+  if(total<6) return null;
+  let best=null; for(const e of buckets.values()) if(!best||e.n>best.n) best=e;
+  return [best.r/best.n,best.g/best.n,best.b/best.n].map(Math.round);
+}
+function detectFace(an){
+  const step=Math.max(1,Math.floor(Math.max(an.w,an.h)/128));
+  const gw=Math.ceil(an.w/step), gh=Math.ceil(an.h/step), lim=Math.ceil(gh*.65);
+  const mask=new Uint8Array(gw*gh);
+  for(let gy=0;gy<lim;gy++)for(let gx=0;gx<gw;gx++){
+    const i=((gy*step)*an.w+gx*step)*4;
+    if(an.d[i+3]>128&&isSkin(an.d[i],an.d[i+1],an.d[i+2])) mask[gy*gw+gx]=1;
+  }
+  const seen=new Uint8Array(gw*gh); let best=null;
+  for(let s=0;s<gw*gh;s++){
+    if(!mask[s]||seen[s]) continue;
+    const q=[s]; seen[s]=1; let n=0,minx=1e9,miny=1e9,maxx=-1,maxy=-1;
+    while(q.length){
+      const p=q.pop(), x=p%gw, y=(p/gw)|0; n++;
+      if(x<minx)minx=x; if(x>maxx)maxx=x; if(y<miny)miny=y; if(y>maxy)maxy=y;
+      for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+        const nx=x+dx, ny=y+dy; if(nx<0||ny<0||nx>=gw||ny>=gh) continue;
+        const np=ny*gw+nx; if(mask[np]&&!seen[np]){seen[np]=1;q.push(np);}
+      }
+    }
+    const ar=(maxy-miny+1)/(maxx-minx+1), score=n*(ar>.6&&ar<2.4?1:.3);
+    if(!best||score>best.score) best={score,n,minx,miny,maxx,maxy};
+  }
+  const minSide=Math.min(an.w,an.h);
+  if(!best||best.n<gw*gh*.003){
+    const s=Math.round(minSide*.38);
+    return {x:Math.round((an.w-s)/2),y:Math.round(an.h*.08),s,auto:false};
+  }
+  const bx=best.minx*step, by=best.miny*step, bw=(best.maxx-best.minx+1)*step, bh=(best.maxy-best.miny+1)*step;
+  let s=Math.min(minSide,Math.max(bw,bh)*1.12);
+  const x=clamp(bx+bw/2-s/2,0,an.w-s), y=clamp(by-s*.12,0,an.h-s);
+  return {x:Math.round(x),y:Math.round(y),s:Math.round(s),auto:true};
+}
+const FALLBACK={skin:[232,186,148],hair:[66,44,32],shirt:[62,104,168],pants:[44,54,92],shoes:[52,46,44]};
+function detectColors(an,f,mc){
+  const {x,y,s}=f;
+  const faceC=clipBox(an,x+s*.22,y+s*.35,x+s*.78,y+s*.8);
+  let skin=null;
+  if(faceC){
+    let r=0,g=0,b=0,n=0; const [x0,y0,x1,y1]=faceC;
+    for(let yy=y0;yy<y1;yy++)for(let xx=x0;xx<x1;xx++){
+      const i=(yy*an.w+xx)*4, R=an.d[i],G=an.d[i+1],B=an.d[i+2];
+      if(an.d[i+3]>128&&isSkin(R,G,B)){r+=R;g+=G;b+=B;n++;}
+    }
+    skin=n>8?[r/n,g/n,b/n].map(Math.round):dominant(an,[x0,y0,x1,y1],false);
+  }
+  const both=(box)=>dominant(an,box,true)||dominant(an,box,false);
+  // mc = the image is already a blocky Minecraft figure (head 8 : body 12 : legs 12), so regions sit higher
+  const R=mc?{shirt:[1.2,2.3],pants:[2.65,3.55],shoes:[3.72,3.97]}:{shirt:[1.25,2.3],pants:[2.9,4.1],shoes:[4.6,5.2]};
+  const shirt=both([x+s*.1,y+s*R.shirt[0],x+s*.9,y+s*R.shirt[1]]);
+  const pants=both([x+s*.15,y+s*R.pants[0],x+s*.85,y+s*R.pants[1]]);
+  const shoes=both([x+s*.1,y+s*R.shoes[0],x+s*.9,y+s*R.shoes[1]]);
+  return {
+    skin:skin||FALLBACK.skin,
+    hair:dominant(an,[x+s*.1,y-s*.1,x+s*.9,y+s*.18],true)||FALLBACK.hair,
+    shirt:shirt||FALLBACK.shirt,
+    pants:pants||(shirt?mul(shirt,.5):FALLBACK.pants),
+    shoes:shoes||(pants?mul(pants,.55):FALLBACK.shoes),
+    found:{skin:!!skin,shirt:!!shirt,pants:!!pants,shoes:!!shoes}
+  };
+}
+
+/* ---------- Minecraft 64×64 layout ---------- */
+// box(u,v,w,h,d): standard cuboid unwrap used by every body part in the skin file
+function box(u,v,w,h,d){
+  return {
+    top:{x:u+d,y:v,w,h:d}, bottom:{x:u+d+w,y:v,w,h:d},
+    right:{x:u,y:v+d,w:d,h}, front:{x:u+d,y:v+d,w,h},
+    left:{x:u+d+w,y:v+d,w:d,h}, back:{x:u+2*d+w,y:v+d,w,h}
+  };
+}
+function parts(aw){
+  return [
+    {name:'HEAD',zh:'頭',u:0,v:0,w:8,h:8,d:8},
+    {name:'BODY',zh:'身體',u:16,v:16,w:8,h:12,d:4},
+    {name:'R ARM',zh:'右臂',u:40,v:16,w:aw,h:12,d:4},
+    {name:'R LEG',zh:'右腿',u:0,v:16,w:4,h:12,d:4},
+    {name:'L LEG',zh:'左腿',u:16,v:48,w:4,h:12,d:4},
+    {name:'L ARM',zh:'左臂',u:32,v:48,w:aw,h:12,d:4},
+    {name:'HAT',zh:'帽子層',u:32,v:0,w:8,h:8,d:8,overlay:true},
+    {name:'JACKET',zh:'外套層',u:16,v:32,w:8,h:12,d:4,overlay:true},
+    {name:'',zh:'右袖層',u:40,v:32,w:aw,h:12,d:4,overlay:true},
+    {name:'',zh:'右褲層',u:0,v:32,w:4,h:12,d:4,overlay:true},
+    {name:'',zh:'左褲層',u:0,v:48,w:4,h:12,d:4,overlay:true},
+    {name:'',zh:'左袖層',u:48,v:48,w:aw,h:12,d:4,overlay:true},
+  ];
+}
+const FACE_ZH={top:'頂',bottom:'底',right:'右側',front:'正面',left:'左側',back:'背面'};
+function noise(x,y){ let h=(x*374761393+y*668265263)|0; h=(h^(h>>>13))*1274126177|0; return ((h^(h>>>16))>>>0)%1000/1000; }
+
+/* ---------- styles ---------- */
+const CAMO=[[63,143,47],[91,191,63],[119,217,85],[46,107,34]];
+const VOID=[[22,20,26],[28,25,33],[18,16,22],[34,30,40]];
+const SCALE=[[26,26,31],[36,34,43],[46,42,56],[21,20,24]];
+const DIAMOND={main:[74,222,213],dark:[30,150,150],light:[190,252,246]};
+const NETHERITE={main:[70,60,64],dark:[38,32,35],light:[112,98,102],trim:[226,166,40]};
+const IRON={main:[214,214,218],dark:[140,140,148],light:[248,248,250]};
+
+const mat=p=>(px,py,w,h)=>{
+  if(px===0||py===0||px===w-1||py===h-1) return [p.dark];
+  if((px*3+py*5)%11===0) return [p.light];
+  return [p.main];
+};
+// Armor goes on the second layer (hat / jacket / sleeves / pants), so the photo face underneath stays visible
+function armorOverlay(p,o={}){
+  const {helmet=true,chest=true,legs=true,boots=true}=o;
+  return ({fill,aw})=>{
+    const m=mat(p);
+    if(helmet){
+      const H=box(32,0,8,8,8);
+      fill(H.top,m); fill(H.back,m);
+      fill(H.right,(px,py,w)=>py<6?m(px,py,w,6):null);
+      fill(H.left,(px,py,w)=>py<6?m(px,py,w,6):null);
+      fill(H.front,(px,py,w)=>(py<2||((px===0||px===7)&&py<5))?m(px,py,w,2):null);
+    }
+    if(chest){
+      const J=box(16,32,8,12,4);
+      for(const k of ['front','back','right','left']) fill(J[k],(px,py,w)=>py>9?null:(p.trim&&(py===0||py===9)&&k==='front')?[p.trim]:m(px,py,w,10));
+      fill(J.top,m);
+      for(const [u,v] of [[40,32],[48,48]]){
+        const S=box(u,v,aw,12,4);
+        for(const k of ['front','back','right','left']) fill(S[k],(px,py,w)=>py<4?(p.trim&&py===3?[p.trim]:m(px,py,w,4)):null);
+        fill(S.top,m);
+      }
+    }
+    if(legs||boots){
+      for(const [u,v] of [[0,32],[0,48]]){
+        const P=box(u,v,4,12,4);
+        for(const k of ['front','back','right','left'])
+          fill(P[k],(px,py,w)=>py<9?(legs?m(px,py,w,9):null):(boots?m(px,py-9,w,3):null));
+        if(legs) fill(P.top,m);
+        if(boots) fill(P.bottom,m);
+      }
+    }
+  };
+}
+const STYLE_FX={
+  classic:{},
+  diamond:{overlay:armorOverlay(DIAMOND)},
+  creeper:{
+    colors:c=>({...c,shirt:CAMO,pants:CAMO,shoes:[[46,107,34],[38,90,28]],hair:CAMO}),
+    overlay:armorOverlay({main:CAMO,dark:[46,107,34],light:[150,232,120]},{chest:false,legs:false,boots:false})
+  },
+  enderman:{
+    colors:()=>({skin:VOID,hair:VOID,shirt:VOID,pants:VOID,shoes:VOID}),
+    face:c=>{const l=lum(c);return mix(c,[l*.38,l*.22,l*.55],.72);},
+    overlay:({fill})=>{ // the purple eye glow along the brow line
+      fill(box(32,0,8,8,8).front,(px,py)=>py===4&&(px===1||px===2||px===5||px===6)?[[204,0,250],0,false]:null);
+    }
+  },
+  zombie:{
+    colors:c=>({...c,skin:[94,150,66],hair:[47,74,36],shirt:[42,167,167],pants:[60,58,158],shoes:[94,150,66]}),
+    face:c=>{const l=lum(c);return mix(c,[l*.55,l*.95,l*.45],.7);}
+  },
+  skeleton:{
+    colors:()=>({skin:[200,200,200],hair:[214,214,214],shirt:[190,190,190],pants:[176,176,176],shoes:[150,150,150]}),
+    face:c=>{const l=Math.min(255,lum(c)*1.1+25);return [l,l,l];},
+    overlay:({fill})=>{ // ribcage gaps on the jacket front
+      fill(box(16,32,8,12,4).front,(px,py)=>([2,4,6,8].includes(py)&&px>=1&&px<=6&&px!==3&&px!==4)?[[70,70,70],0,false]:null);
+    }
+  },
+  netherknight:{overlay:armorOverlay(NETHERITE)},
+  knight:{overlay:(ctx)=>{
+    armorOverlay(IRON)(ctx);
+    ctx.fill(box(16,32,8,12,4).front,(px,py)=>{ // red tabard with a gold cross
+      if(px<2||px>5||py<1||py>9) return null;
+      if((px===3||px===4)&&py>=2&&py<=7) return [[232,180,40],0,false];
+      if(py===4&&px>=2&&px<=5) return [[232,180,40],0,false];
+      return [[158,43,37]];
+    });
+  }},
+  dragon:{
+    colors:()=>({skin:SCALE,hair:SCALE,shirt:SCALE,pants:SCALE,shoes:SCALE}),
+    face:c=>{const l=lum(c);return mix(c,[l*.5,l*.3,l*.72],.55);},
+    overlay:armorOverlay({main:SCALE,dark:[18,16,22],light:[179,92,255]},{legs:false})
+  },
+  hero:{
+    colors:c=>({...c,shirt:sat(c.shirt,1.45),pants:sat(c.pants,1.3),shoes:[196,40,40]}),
+    face:c=>sat(c,1.2),
+    overlay:({fill,aw})=>{
+      const J=box(16,32,8,12,4);
+      fill(J.front,(px,py)=>{
+        const d=Math.abs(px-3.5)+Math.abs(py-4.5);
+        if(d<=1) return [[214,40,40],0,false];
+        if(d<=2.2) return [[245,196,40],0,false];
+        if(py===10) return [[245,196,40]];
+        return null;
+      });
+      for(const k of ['back','right','left']) fill(J[k],(px,py)=>py===10?[[245,196,40]]:null);
+      for(const [u,v] of [[40,32],[48,48]]){
+        const S=box(u,v,aw,12,4);
+        for(const k of ['front','back','right','left']) fill(S[k],(px,py)=>py>=9?[[245,196,40]]:null);
+      }
+    }
+  },
+};
+const STYLES=[
+  ['classic','Classic Steve','經典照片色'],['diamond','Diamond Armor','鑽石盔甲'],['creeper','Creeper','苦力怕連帽'],
+  ['enderman','Enderman','終界使者'],['zombie','Zombie','殭屍'],['skeleton','Skeleton','骷髏'],
+  ['netherknight','Nether Knight','獄髓騎士'],['knight','Medieval Knight','中世紀騎士'],['dragon','Ender Dragon','終界龍鱗'],['hero','Pixel Hero','像素英雄'],
+];
+
+function buildSkin(an,f,col0,o,styleId){
+  const st=STYLE_FX[styleId]||STYLE_FX.classic;
+  const col=st.colors?st.colors(col0):col0;
+  const img=new ImageData(64,64), D=img.data;
+  const put=(x,y,c,shade=0,tex=true)=>{
+    if(Array.isArray(c[0])) c=c[Math.floor(noise(x+101,y+57)*c.length)];
+    const k=1+shade+(tex&&o.texture?(noise(x,y)-.5)*.13:0), i=(y*64+x)*4;
+    D[i]=clamp(c[0]*k,0,255); D[i+1]=clamp(c[1]*k,0,255); D[i+2]=clamp(c[2]*k,0,255); D[i+3]=255;
+  };
+  const fill=(r,fn)=>{ for(let py=0;py<r.h;py++)for(let px=0;px<r.w;px++){ const res=fn(px,py,r.w,r.h); if(res) put(r.x+px,r.y+py,res[0],res[1]||0,res[2]!==false);} };
+  const aw=o.slim?3:4;
+
+  // HEAD — front face comes straight from the cropped photo
+  const H=box(0,0,8,8,8), kc=1+o.contrast/100, cell=f.s/8;
+  fill(H.front,(px,py)=>{
+    const c=avgBox(an,f.x+px*cell,f.y+py*cell,f.x+(px+1)*cell,f.y+(py+1)*cell);
+    let rgb=c[3]<128?one(col.skin):c.slice(0,3).map(v=>(v-128)*kc+128);
+    if(st.face) rgb=st.face(rgb);
+    return [rgb,0,false];
+  });
+  fill(H.top,()=>[col.hair]);
+  fill(H.bottom,()=>[col.skin,-.08]);
+  fill(H.back,(px,py)=>[col.hair,py>=6?-.1:0]);
+  fill(H.right,(px,py)=>(py<2||(py<6&&px<4)||(py<7&&px<2))?[col.hair]:[col.skin,-.04]);
+  fill(H.left,(px,py)=>(py<2||(py<6&&px>=4)||(py<7&&px>=6))?[col.hair]:[col.skin,-.04]);
+
+  // BODY
+  const B=box(16,16,8,12,4);
+  const pattern=o.pattern&&styleId==='classic'?(()=>{
+    const c=clipBox(an,f.x-f.s*.15,f.y+f.s*1.15,f.x+f.s*1.15,f.y+f.s*2.65);
+    if(!c) return null; const [x0,y0,x1,y1]=c, cw=(x1-x0)/8, ch=(y1-y0)/12;
+    return (px,py)=>{const v=avgBox(an,x0+px*cw,y0+py*ch,x0+(px+1)*cw,y0+(py+1)*ch); return v[3]<128?one(col.shirt):v.slice(0,3);};
+  })():null;
+  fill(B.front,(px,py)=>{
+    if(pattern) return [pattern(px,py),0,false];
+    if(py===0&&(px===3||px===4)) return [col.skin,-.05];
+    return [col.shirt,py===11?-.12:0];
+  });
+  fill(B.back,(px,py)=>[col.shirt,py===11?-.12:0]);
+  fill(B.right,(px,py)=>[col.shirt,-.06+(py===11?-.1:0)]);
+  fill(B.left,(px,py)=>[col.shirt,-.06+(py===11?-.1:0)]);
+  fill(B.top,()=>[col.shirt,.04]);
+  fill(B.bottom,()=>[col.pants,-.1]);
+
+  // ARMS
+  const sleeve=o.sleeves==='long'?11:o.sleeves==='short'?4:0;
+  for(const [u,v] of [[40,16],[32,48]]){
+    const A=box(u,v,aw,12,4);
+    for(const k of ['front','back','right','left']){
+      const side=(k==='right'||k==='left')?-.05:0;
+      fill(A[k],(px,py)=>py<sleeve?[col.shirt,side+(py===sleeve-1?-.08:0)]:[col.skin,side+(py===11?-.06:0)]);
+    }
+    fill(A.top,()=>[sleeve?col.shirt:col.skin,.04]);
+    fill(A.bottom,()=>[col.skin,-.1]);
+  }
+  // LEGS
+  for(const [u,v] of [[0,16],[16,48]]){
+    const L=box(u,v,4,12,4);
+    for(const k of ['front','back','right','left']){
+      const side=(k==='right'||k==='left')?-.06:0;
+      fill(L[k],(px,py)=>py<9?[col.pants,side]:[col.shoes,side+(py===11?-.1:0)]);
+    }
+    fill(L.top,()=>[col.pants]);
+    fill(L.bottom,()=>[col.shoes,-.15]);
+  }
+  if(st.overlay) st.overlay({fill,aw});
+  return img;
+}
+
+/* ---------- sample character (drawn, not loaded) ---------- */
+function makeSample(){
+  const cv=document.createElement('canvas'); cv.width=320; cv.height=480; const c=cv.getContext('2d');
+  const g=c.createLinearGradient(0,0,0,480); g.addColorStop(0,'#bcd6e6'); g.addColorStop(1,'#e4edf1'); c.fillStyle=g; c.fillRect(0,0,320,480);
+  const rr=(x,y,w,h,r,col)=>{c.fillStyle=col;c.beginPath();c.roundRect(x,y,w,h,r);c.fill();};
+  rr(108,20,104,74,26,'#4a2e1f');
+  rr(146,116,28,22,4,'#e3b072');
+  rr(118,38,84,86,18,'#f1c27d');
+  rr(108,20,104,30,14,'#4a2e1f');
+  rr(108,30,14,44,6,'#4a2e1f'); rr(198,30,14,44,6,'#4a2e1f');
+  c.fillStyle='#fff'; c.fillRect(134,72,16,9); c.fillRect(170,72,16,9);
+  c.fillStyle='#2f5aa8'; c.fillRect(142,72,8,9); c.fillRect(170,72,8,9);
+  c.fillStyle='#b4644f'; c.fillRect(150,102,20,5);
+  rr(98,134,124,158,10,'#c0392b');
+  rr(70,136,32,58,8,'#c0392b'); rr(218,136,32,58,8,'#c0392b');
+  rr(76,192,22,84,8,'#eebd7a'); rr(222,192,22,84,8,'#eebd7a');
+  rr(104,288,52,132,4,'#2c3e70'); rr(164,288,52,132,4,'#2c3e70');
+  rr(100,416,58,30,6,'#3b2a20'); rr(162,416,58,30,6,'#3b2a20');
+  return cv.toDataURL('image/png');
+}
+function loadImage(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
+
+/* ---------- drawing ---------- */
+function cssVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+function toCanvas(img){ const c=document.createElement('canvas'); c.width=64; c.height=64; c.getContext('2d').putImageData(img,0,0); return c; }
+function drawSheet(cv,skinCv,showGrid,aw){
+  const ctx=cv.getContext('2d'), S=cv.width/64;
+  const a=cssVar('--check-a'), b=cssVar('--check-b');
+  for(let y=0;y<32;y++)for(let x=0;x<32;x++){ ctx.fillStyle=(x+y)%2?a:b; ctx.fillRect(x*S*2,y*S*2,S*2,S*2); }
+  ctx.imageSmoothingEnabled=false; ctx.drawImage(skinCv,0,0,cv.width,cv.height);
+  if(!showGrid) return;
+  const grid=cssVar('--grid'), og=cssVar('--overlay-grid');
+  ctx.lineWidth=2;
+  for(const p of parts(aw)){
+    const F=box(p.u,p.v,p.w,p.h,p.d);
+    ctx.strokeStyle=p.overlay?og:grid; ctx.setLineDash(p.overlay?[6,5]:[]);
+    for(const r of Object.values(F)) ctx.strokeRect(r.x*S+1,r.y*S+1,r.w*S-2,r.h*S-2);
+    if(p.name){
+      ctx.font=`${p.d>=8?18:13}px Silkscreen, monospace`; ctx.fillStyle=p.overlay?og:grid; ctx.textBaseline='top';
+      ctx.fillText(p.name,p.u*S+6,p.v*S+7);
+    }
+  }
+  ctx.setLineDash([]); ctx.lineWidth=5; ctx.strokeStyle=grid; ctx.strokeRect(8*S,8*S,8*S,8*S);
+}
+// Front/back "paper doll": base layer, then the second layer on top
+function drawDoll(cv,src,aw,side){
+  const ctx=cv.getContext('2d'); ctx.clearRect(0,0,16,32); ctx.imageSmoothingEnabled=false;
+  const blit=(r,dx,dy)=>ctx.drawImage(src,r.x,r.y,r.w,r.h,dx,dy,r.w,r.h);
+  const layers=[
+    {head:[0,0],body:[16,16],ra:[40,16],la:[32,48],rl:[0,16],ll:[16,48]},
+    {head:[32,0],body:[16,32],ra:[40,32],la:[48,48],rl:[0,32],ll:[0,48]},
+  ];
+  for(const L of layers){
+    const g=(k,w,h,d)=>box(L[k][0],L[k][1],w,h,d)[side];
+    blit(g('head',8,8,8),4,0); blit(g('body',8,12,4),4,8);
+    const ra=g('ra',aw,12,4), la=g('la',aw,12,4), rl=g('rl',4,12,4), ll=g('ll',4,12,4);
+    if(side==='front'){ blit(ra,4-aw,8); blit(la,12,8); blit(rl,4,20); blit(ll,8,20); }
+    else { blit(la,4-aw,8); blit(ra,12,8); blit(ll,4,20); blit(rl,8,20); }
+  }
+}
+function regionAt(x,y,aw){
+  for(const p of parts(aw)){
+    const F=box(p.u,p.v,p.w,p.h,p.d);
+    for(const [k,r] of Object.entries(F)) if(x>=r.x&&x<r.x+r.w&&y>=r.y&&y<r.y+r.h) return `${p.zh} · ${FACE_ZH[k]}`;
+  }
+  return '未使用區域（保持透明）';
+}
+
+/* ---------- review (AI checks its own skin) ---------- */
+async function scaledCanvas(url,max){
+  const img=await loadImage(url), k=Math.min(1,max/Math.max(img.naturalWidth,img.naturalHeight));
+  const c=document.createElement('canvas'); c.width=Math.round(img.naturalWidth*k); c.height=Math.round(img.naturalHeight*k);
+  const x=c.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,c.width,c.height); x.drawImage(img,0,0,c.width,c.height);
+  return c;
+}
+// Image 1 for the reviewer: the sampled source with the face box drawn on it
+async function sourceWithBox(url,an,face){
+  const c=await scaledCanvas(url,768), k=c.width/an.w, x=c.getContext('2d');
+  x.strokeStyle='#ffd02e'; x.lineWidth=Math.max(2,Math.round(c.width/180));
+  x.strokeRect(face.x*k,face.y*k,face.s*k,face.s*k);
+  return c;
+}
+// Image 2: front + back paper doll and the raw 64×64 texture on neutral grey
+function reviewSheet(skinCv,aw){
+  const c=document.createElement('canvas'); c.width=760; c.height=400;
+  const x=c.getContext('2d'); x.fillStyle='#808080'; x.fillRect(0,0,760,400); x.imageSmoothingEnabled=false;
+  x.fillStyle='#fff'; x.font='bold 16px sans-serif';
+  ['front','back'].forEach((side,i)=>{
+    const d=document.createElement('canvas'); d.width=16; d.height=32; drawDoll(d,skinCv,aw,side);
+    x.drawImage(d,10+i*180,56,160,320); x.fillText(side.toUpperCase(),14+i*180,36);
+  });
+  x.drawImage(skinCv,366,8,384,384);
+  return c;
+}
+function boxToFace(b,an){
+  const [y0,x0,y1,x1]=b.map(Number);
+  if(![y0,x0,y1,x1].every(Number.isFinite)||y1<=y0||x1<=x0) return null;
+  const X0=x0/1000*an.w, X1=x1/1000*an.w, Y0=y0/1000*an.h, Y1=y1/1000*an.h;
+  const s=clamp(Math.max(X1-X0,Y1-Y0)*1.04,8,Math.min(an.w,an.h));
+  if(s<Math.min(an.w,an.h)*.04) return null;
+  return {x:clamp((X0+X1)/2-s/2,0,an.w-s),y:clamp((Y0+Y1)/2-s/2,0,an.h-s),s};
+}
+// Kept in sync with reviewPrompt() in proxy/server.js
+function reviewPrompt(colors,isAi,hasPhoto,style){
+  return [
+    'You are the quality checker for an automatic Minecraft skin generator.',
+    `Image 1: the source picture the skin was sampled from${isAi?' (an AI-drawn Minecraft-style figure)':" (the user's photo)"}. The yellow square marks where the 8x8 face texture was sampled; it should tightly cover the character's face from the top of the forehead (including a hair fringe) to the chin, centered on the face.`,
+    'Image 2: the generated result on a grey background: front view, back view, and the raw 64x64 skin texture.',
+    hasPhoto?"Image 3: the person's original photo, for identity reference.":'',
+    `Selected style: ${style}. Current colors: ${JSON.stringify(colors)}.`,
+    `Check: (1) is the yellow square on the face; (2) are the skin, hair, shirt, pants and shoes colors right compared with the source; (3) is the face readable (eyes visible, not a smear) and does it resemble the person; (4) is image 1 a clean front-facing figure (not turned to the side, not in profile, not cropped).`,
+    'Reply with only JSON: {"score": integer 1-10, "issues": [up to 5 short sentences in Traditional Chinese], "face_box": [ymin, xmin, ymax, xmax] of the face in image 1 on a 0-1000 scale, "colors": {only the keys among skin, hair, shirt, pants, shoes whose color is clearly wrong, as "#rrggbb"}, "regenerate": true only if image 1 itself is unusable (angled or profile view, cropped, wrong proportions, face unrecognizable), "regenerate_hint": "short English instruction for the image model to fix it, or empty"}',
+  ].filter(Boolean).join('\n');
+}
+
+/* ---------- UI pieces ---------- */
+const COLOR_KEYS=[['skin','膚色'],['hair','頭髮'],['shirt','上衣'],['pants','褲子'],['shoes','鞋子']];
+
+function Doll({img,aw,side='front',w=48}){
+  const ref=useRef(null);
+  useEffect(()=>{ if(img) drawDoll(ref.current,toCanvas(img),aw,side); },[img,aw,side]);
+  return html`<canvas ref=${ref} width="16" height="32" class="px block" style=${{width:w+'px',height:w*2+'px'}}></canvas>`;
+}
+function Seg({value,options,onChange,label}){
+  return html`<div class="seg" role="group" aria-label=${label}>
+    ${options.map(([v,t])=>html`<button key=${v} type="button" aria-pressed=${value===v} onClick=${()=>onChange(v)}>${t}</button>`)}
+  </div>`;
+}
+function PixelIcon({cells,color='var(--accent-strong)'}){
+  // tiny 5×5 pixel glyphs drawn from a string mask, used as feature icons
+  return html`<svg width="30" height="30" viewBox="0 0 5 5" aria-hidden="true" style=${{shapeRendering:'crispEdges'}}>
+    ${cells.split('').map((ch,i)=>ch==='1'?html`<rect key=${i} x=${i%5} y=${(i/5)|0} width="1" height="1" fill=${color}/>`:null)}
+  </svg>`;
+}
+
+function Cropper({src,an,face,setFace}){
+  const wrap=useRef(null);
+  const start=(e,mode)=>{
+    e.preventDefault(); e.stopPropagation();
+    const rect=wrap.current.getBoundingClientRect(), k=an.w/rect.width;
+    const s0={px:e.clientX,py:e.clientY,f:{...face}};
+    const move=ev=>{
+      const dx=(ev.clientX-s0.px)*k, dy=(ev.clientY-s0.py)*k;
+      let {x,y,s}=s0.f;
+      if(mode==='move'){x+=dx;y+=dy;} else s=s+Math.max(dx,dy);
+      s=clamp(s,8,Math.min(an.w,an.h)); x=clamp(x,0,an.w-s); y=clamp(y,0,an.h-s);
+      setFace({x,y,s});
+    };
+    const up=()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);};
+    window.addEventListener('pointermove',move); window.addEventListener('pointerup',up);
+  };
+  const onKey=e=>{
+    const st=e.shiftKey?10:2; let {x,y,s}=face;
+    if(e.key==='ArrowLeft')x-=st; else if(e.key==='ArrowRight')x+=st; else if(e.key==='ArrowUp')y-=st; else if(e.key==='ArrowDown')y+=st;
+    else if(e.key==='+'||e.key==='=')s+=st; else if(e.key==='-')s-=st; else return;
+    e.preventDefault(); s=clamp(s,8,Math.min(an.w,an.h)); setFace({x:clamp(x,0,an.w-s),y:clamp(y,0,an.h-s),s});
+  };
+  return html`<div ref=${wrap} class="relative overflow-hidden rounded-xl select-none mx-auto" style=${{maxWidth:'100%',width:an.w>=an.h?'100%':(an.w/an.h*320)+'px'}}>
+    <img src=${src} alt="上傳的照片" class="block w-full h-auto" draggable="false" />
+    <div class="cropbox" tabIndex="0" role="slider" aria-label="臉部框：拖曳移動，方向鍵微調，+/- 縮放"
+      onPointerDown=${e=>start(e,'move')} onKeyDown=${onKey}
+      style=${{left:face.x/an.w*100+'%',top:face.y/an.h*100+'%',width:face.s/an.w*100+'%',height:face.s/an.h*100+'%'}}>
+      <div class="grid8"></div>
+      <span class="tag pixel">FACE</span>
+      <div class="handle" onPointerDown=${e=>start(e,'resize')}></div>
+    </div>
+  </div>`;
+}
+
+/* ---------- App ---------- */
+// config.js sets window.SKIN_API = {base:'https://<cloud-run-url>', needsCode:true|false}
+const API=window.SKIN_API||{};
+function App(){
+  const [src,setSrc]=useState(null);
+  const [photo,setPhoto]=useState(null);
+  const [aiSrc,setAiSrc]=useState(null);
+  const [srcKind,setSrcKind]=useState('photo');
+  const [aiOn,setAiOn]=useState(!!API.base);
+  const [code,setCode]=useState(()=>{ try{ return localStorage.getItem('skin-access-code')||''; }catch{ return ''; } });
+  const [isSample,setIsSample]=useState(true);
+  const [an,setAn]=useState(null);
+  const [face,setFace]=useState(null);
+  const [over,setOver]=useState({});
+  const [style,setStyle]=useState('classic');
+  const [desc,setDesc]=useState('');
+  const [opt,setOpt]=useState({slim:false,sleeves:'short',texture:true,contrast:20,pattern:false,grid:true});
+  const [side,setSide]=useState('front');
+  const [hover,setHover]=useState(null);
+  const [toast,setToast]=useState(null);
+  const [busy,setBusy]=useState(false);
+  const [saving,setSaving]=useState(false);
+  const [fallbackUrl,setFallbackUrl]=useState(null);
+  const [drag,setDrag]=useState(false);
+  const [theme,setTheme]=useState(0);
+  const [aiOk,setAiOk]=useState(true);
+  const [reviewOk,setReviewOk]=useState(!!API.base);
+  const [autoReview,setAutoReview]=useState(true);
+  const [review,setReview]=useState(null);
+  const [reviewTick,setReviewTick]=useState(0);
+  const attemptRef=useRef(0);
+  const sheetCv=useRef(null), skinCv=useRef(null), fileIn=useRef(null), resultRef=useRef(null);
+  const caps=useRef({});
+
+  const say=useCallback((text)=>{ setToast(text); clearTimeout(say.t); say.t=setTimeout(()=>setToast(null),3800); },[]);
+
+  const open=useCallback(async(dataUrl,sample)=>{
+    try{
+      const img=await loadImage(dataUrl); const a=analyze(img); const f=detectFace(a);
+      setSrc(dataUrl); setAn(a); setFace(f); setOver({}); setIsSample(sample); setFallbackUrl(null);
+      setPhoto(dataUrl); setAiSrc(null); setSrcKind('photo');
+      if(!sample) say(f.auto?'已自動找到臉部，可拖曳黃框微調。':'沒有偵測到明顯的臉，請手動把黃框拖到臉上。');
+    }catch{ say('無法讀取這個檔案。請改用 JPG、PNG 或 WebP 圖片。'); }
+  },[say]);
+  const loadSource=useCallback(async(dataUrl,kind)=>{
+    const img=await loadImage(dataUrl); const a=analyze(img); const f=detectFace(a);
+    setSrc(dataUrl); setAn(a); setFace(f); setOver({}); setSrcKind(kind);
+    return f;
+  },[]);
+  const readFile=useCallback(file=>{
+    if(!file) return;
+    if(!/^image\/(png|jpe?g|webp|gif)$/.test(file.type)){ say('請選擇 JPG、PNG 或 WebP 圖片。'); return; }
+    if(file.size>10*1024*1024){ say('檔案超過 10 MB，請先壓縮或裁切後再上傳。'); return; }
+    const r=new FileReader(); r.onload=()=>open(r.result,false); r.readAsDataURL(file);
+  },[open,say]);
+
+  useEffect(()=>{ open(makeSample(),true); },[open]);
+  useEffect(()=>{
+    const onPaste=e=>{ const it=[...(e.clipboardData?.items||[])].find(i=>i.type.startsWith('image/')); if(it) readFile(it.getAsFile()); };
+    window.addEventListener('paste',onPaste);
+    const mq=matchMedia('(prefers-color-scheme: dark)'), bump=()=>setTheme(t=>t+1);
+    mq.addEventListener?.('change',bump);
+    const mo=new MutationObserver(bump); mo.observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+    document.fonts?.ready.then(bump);
+    return ()=>{window.removeEventListener('paste',onPaste);mq.removeEventListener?.('change',bump);mo.disconnect();};
+  },[readFile]);
+  useEffect(()=>{ (async()=>{
+    if(!window.claude?.use){ caps.current={downloads:null,sample:null}; setAiOk(false); return; }
+    const [d,s]=await Promise.all([window.claude.use('downloads').catch(()=>null),window.claude.use('sample').catch(()=>null)]);
+    const lim=s&&s.limits?await s.limits().catch(()=>null):null;
+    caps.current={downloads:d,sample:s,images:!!lim?.images}; setAiOk(!!s);
+    if(lim?.images) setReviewOk(true);
+  })(); },[]);
+
+  const detected=useMemo(()=>an&&face?detectColors(an,face,srcKind==='ai'):null,[an,face,srcKind]);
+  const colors=useMemo(()=>{ if(!detected) return null; const c={}; for(const [k] of COLOR_KEYS) c[k]=over[k]||detected[k]; return c; },[detected,over]);
+  const aw=opt.slim?3:4;
+  const skin=useMemo(()=>an&&face&&colors?buildSkin(an,face,colors,opt,style):null,[an,face,colors,opt,style]);
+  const thumbs=useMemo(()=>an&&face&&colors?Object.fromEntries(STYLES.map(([id])=>[id,buildSkin(an,face,colors,opt,id)])):{},[an,face,colors,opt]);
+
+  useEffect(()=>{
+    if(!skin) return;
+    skinCv.current.getContext('2d').putImageData(skin,0,0);
+    drawSheet(sheetCv.current,skinCv.current,opt.grid,aw);
+  },[skin,opt.grid,aw,theme]);
+
+  const onSheetMove=e=>{
+    const r=e.currentTarget.getBoundingClientRect();
+    const x=Math.floor((e.clientX-r.left)/r.width*64), y=Math.floor((e.clientY-r.top)/r.height*64);
+    if(x<0||y<0||x>63||y>63) return setHover(null);
+    setHover({x,y,where:regionAt(x,y,aw)});
+  };
+
+  const runReview=async()=>{
+    setReview({state:'running'});
+    const hex=Object.fromEntries(COLOR_KEYS.map(([k])=>[k,toHex(colors[k])]));
+    const isAi=srcKind==='ai', withPhoto=isAi&&photo;
+    try{
+      const srcCv=await sourceWithBox(src,an,face), resCv=reviewSheet(skinCv.current,aw);
+      const photoCv=withPhoto?await scaledCanvas(photo,768):null;
+      let r;
+      if(API.base){
+        const b64=(c,t)=>c.toDataURL(t,.88).split(',')[1];
+        const res=await fetch(API.base.replace(/\/$/,'')+'/api/review',{
+          method:'POST',
+          headers:{'Content-Type':'application/json',...(code?{'x-access-code':code}:{})},
+          body:JSON.stringify({source:b64(srcCv,'image/jpeg'),result:b64(resCv,'image/png'),photo:photoCv?b64(photoCv,'image/jpeg'):null,colors:hex,ai:isAi,style})
+        });
+        r=await res.json().catch(()=>({}));
+        if(!res.ok) throw new Error(r.error||`伺服器回應 ${res.status}`);
+      }else{
+        const blob=(c,t)=>new Promise(ok=>c.toBlob(ok,t,.88));
+        const images=[await blob(srcCv,'image/jpeg'),await blob(resCv,'image/png')];
+        if(photoCv) images.push(await blob(photoCv,'image/jpeg'));
+        r=await caps.current.sample.json(reviewPrompt(hex,isAi,!!photoCv,style),{images});
+      }
+      if(!r||typeof r!=='object') throw new Error('審查結果格式不正確');
+
+      const fixed=[];
+      const nf=Array.isArray(r.face_box)?boxToFace(r.face_box,an):null;
+      if(nf&&(Math.abs(nf.x-face.x)>face.s*.08||Math.abs(nf.y-face.y)>face.s*.08||Math.abs(nf.s-face.s)>face.s*.12)){ setFace(nf); fixed.push('臉部框位置'); }
+      if(r.colors&&typeof r.colors==='object'){
+        const o={};
+        for(const [k,zh] of COLOR_KEYS){
+          const v=r.colors[k]; if(typeof v!=='string'||!/^#[0-9a-f]{6}$/i.test(v)) continue;
+          const c=fromHex(v), cur=one(colors[k]);
+          if(Math.hypot(c[0]-cur[0],c[1]-cur[1],c[2]-cur[2])>30){ o[k]=c; fixed.push(zh+'顏色'); }
+        }
+        if(Object.keys(o).length) setOver(p=>({...p,...o}));
+      }
+      const score=clamp(Math.round(Number(r.score)||0),1,10);
+      const issues=Array.isArray(r.issues)?r.issues.slice(0,5).map(String):[];
+      setReview({state:'done',score,issues,fixed});
+
+      if(r.regenerate&&score<7){
+        if(aiOn&&API.base&&attemptRef.current<1){
+          attemptRef.current++;
+          say('審查建議重畫，正在依修正指示重新生成…');
+          runAi(String(r.regenerate_hint||'').slice(0,300));
+        }else if(!aiOn&&API.base) say('這張照片不適合直接取樣，開啟「AI 轉換」可以先把角色轉成正面。');
+      }
+    }catch(e){
+      const code=e?.code;
+      if(code==='not_granted'||code==='sampling_disabled'||code==='images_unavailable'){ setReviewOk(false); setReview(null); say('未允許使用 Claude 看圖，自動審查已停用。'); }
+      else setReview({state:'error',text:e instanceof TypeError?'連不到審查伺服器。':(code==='rate_limited'?'請求太頻繁，稍等一下再試。':'審查失敗：'+(e?.message||'未知錯誤'))});
+    }
+  };
+  useEffect(()=>{ if(reviewTick&&skin) runReview(); },[reviewTick]);
+
+  const runAi=async(fix='')=>{
+    setBusy(true);
+    try{
+      const img=await loadImage(photo);
+      const k=Math.min(1,1024/Math.max(img.naturalWidth,img.naturalHeight));
+      const c=document.createElement('canvas'); c.width=Math.round(img.naturalWidth*k); c.height=Math.round(img.naturalHeight*k);
+      const x=c.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,c.width,c.height); x.drawImage(img,0,0,c.width,c.height);
+      const res=await fetch(API.base.replace(/\/$/,'')+'/api/stylize',{
+        method:'POST',
+        headers:{'Content-Type':'application/json',...(code?{'x-access-code':code}:{})},
+        body:JSON.stringify({image:c.toDataURL('image/jpeg',.9).split(',')[1],mime:'image/jpeg',style,desc:desc.trim().slice(0,300),fix})
+      });
+      const j=await res.json().catch(()=>({}));
+      if(!res.ok||!j.image) throw new Error(j.error||`伺服器回應 ${res.status}`);
+      const url=`data:${j.mime||'image/png'};base64,${j.image}`;
+      setAiSrc(url);
+      const f=await loadSource(url,'ai');
+      if(autoReview&&reviewOk) setReviewTick(t=>t+1);
+      else say(f.auto?'Nano Banana 轉換完成，已自動對準臉部。':'轉換完成，但沒有找到臉，請手動把黃框拖到頭上。');
+    }catch(e){
+      say(e instanceof TypeError?'連不到 AI 伺服器，請檢查網路或稍後再試。':'AI 轉換失敗：'+e.message);
+    }finally{ setBusy(false); }
+    if(matchMedia('(max-width: 1023px)').matches) resultRef.current?.scrollIntoView({behavior:'smooth',block:'start'});
+  };
+
+  const generate=async()=>{
+    attemptRef.current=0;
+    if(aiOn&&API.base) return runAi();
+    const text=desc.trim();
+    if(text&&caps.current.sample){
+      setBusy(true);
+      const cur=Object.fromEntries(COLOR_KEYS.map(([k])=>[k,toHex(colors[k])]));
+      const prompt=`You help configure a Minecraft skin generator. The user wrote a style description (any language). `
+        +`Auto-detected colors from their photo: ${JSON.stringify(cur)}. `
+        +`Available base styles (id: name): ${STYLES.map(s=>s[0]+': '+s[1]).join(', ')}. `
+        +`Reply with only JSON like {"style":"diamond","colors":{"shirt":"#3355aa"},"note":"一句繁體中文說明"}. `
+        +`"style" is one id from the list, or null to keep the current one ("${style}"). `
+        +`"colors" includes only the keys among skin, hair, shirt, pants, shoes that the description changes, as #rrggbb. `
+        +`"note" is one short sentence in Traditional Chinese describing what you changed.\n\nDescription:\n"""${text.slice(0,300)}"""`;
+      try{
+        const r=await caps.current.sample.json(prompt,{modelTier:'quick'});
+        if(r&&typeof r==='object'){
+          if(r.style&&STYLE_FX[r.style]) setStyle(r.style);
+          if(r.colors&&typeof r.colors==='object'){
+            const o={}; for(const [k] of COLOR_KEYS){ const v=r.colors[k]; if(typeof v==='string'&&/^#[0-9a-f]{6}$/i.test(v)) o[k]=fromHex(v); }
+            setOver(p=>({...p,...o}));
+          }
+          say(typeof r.note==='string'&&r.note?r.note:'已依風格描述調整。');
+        }
+      }catch(e){
+        if(e?.code==='not_granted'||e?.code==='sampling_disabled'){ setAiOk(false); say('未允許使用 Claude，風格描述已停用；其他功能照常運作。'); }
+        else if(e?.code==='rate_limited') say('請求太頻繁，稍等一下再試。');
+        else if(e?.code!=='cancelled') say('風格描述沒有套用成功，可以換個說法再試一次。');
+      }finally{ setBusy(false); }
+    }else if(!(autoReview&&reviewOk)){
+      say('皮膚已生成，可以下載了。');
+    }
+    if(autoReview&&reviewOk) setReviewTick(t=>t+1);
+    if(matchMedia('(max-width: 1023px)').matches) resultRef.current?.scrollIntoView({behavior:'smooth',block:'start'});
+  };
+
+  const download=async()=>{
+    setSaving(true);
+    const blob=await new Promise(r=>skinCv.current.toBlob(r,'image/png'));
+    const name=`minecraft-skin-${style}.png`;
+    try{
+      if(caps.current.downloads){
+        await caps.current.downloads.save({filename:name,data:blob});
+        say(`已儲存 ${name}`);
+      }else{
+        const url=skinCv.current.toDataURL('image/png');
+        const a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
+        setFallbackUrl(url); say('若沒有開始下載，請在下方縮圖按右鍵（手機長按）另存。');
+      }
+    }catch(err){
+      const code=err&&err.code;
+      if(code==='declined') say('已取消儲存。');
+      else if(code==='rate_limited') say('另一個儲存視窗還開著，請先處理後再試一次。');
+      else { setFallbackUrl(skinCv.current.toDataURL('image/png')); say('這個檢視無法直接儲存，請在下方縮圖按右鍵（手機長按）另存。'); }
+    }finally{ setSaving(false); }
+  };
+
+  const setO=(k,v)=>setOpt(o=>({...o,[k]:v}));
+  const styleName=(STYLES.find(s=>s[0]===style)||STYLES[0]);
+
+  return html`<div>
+    <header class="sticky z-10 border-b" style=${{top:'env(safe-area-inset-top,0px)',background:'color-mix(in srgb,var(--bg) 88%,transparent)',backdropFilter:'blur(10px)',borderColor:'var(--line)'}}>
+      <div class="wrap flex items-center justify-between gap-4 py-3">
+        <a href="#top" class="flex items-center gap-2 font-black text-[17px] min-w-0">
+          <${PixelIcon} cells="1111110101111111101111111" color="var(--accent-strong)" />
+          <span class="truncate">像素皮膚工坊</span>
+        </a>
+        <nav class="hidden md:flex items-center gap-6 text-sm muted">
+          <a href="#generator" class="hover:underline">生成器</a><a href="#how" class="hover:underline">使用方法</a>
+          <a href="#features" class="hover:underline">特色</a><a href="#faq" class="hover:underline">常見問題</a>
+        </nav>
+        <a href="#generator" class="btn btn-dark text-sm">免費開始</a>
+      </div>
+    </header>
+
+    <section id="top" style=${{background:'radial-gradient(1200px 380px at 50% -40px,var(--accent-soft),transparent 70%)'}}>
+      <div class="wrap text-center" style=${{paddingBlock:'56px 28px'}}>
+        <span class="chip"><span class="pixel text-[11px]">64×64</span> Minecraft 皮膚生成器</span>
+        <h1 class="mt-4 font-black text-3xl sm:text-5xl leading-tight">將照片變成 Minecraft 角色</h1>
+        <p class="mt-4 mx-auto muted text-base sm:text-lg" style=${{maxWidth:'60ch'}}>上傳照片並選擇皮膚風格，臉部會縮成 8×8 像素貼到頭部正面，衣服顏色自動填滿身體與四肢，輸出可直接匯入遊戲的透明底 PNG。</p>
+      </div>
+    </section>
+
+    <section id="generator" class="wrap" style=${{scrollMarginTop:'72px'}}>
+      <div class="card p-4 sm:p-6 grid gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
+        <div class="flex flex-col gap-5 min-w-0">
+          <div>
+            <div class="label mb-2">上傳照片 <small>JPG、PNG、WebP，最大 10 MB</small></div>
+            <div class=${'drop p-3 '+(drag?'on':'')}
+              onDragOver=${e=>{e.preventDefault();setDrag(true);}} onDragLeave=${()=>setDrag(false)}
+              onDrop=${e=>{e.preventDefault();setDrag(false);readFile(e.dataTransfer.files[0]);}}>
+              ${an&&face&&html`<${Cropper} src=${src} an=${an} face=${face} setFace=${setFace} />`}
+              <div class="flex flex-wrap items-center justify-between gap-3 mt-3">
+                <p class="text-sm muted min-w-0">${isSample?'目前是範例角色。拖放照片到這裡、貼上，或':'拖曳黃框對準臉部，右下角可縮放。'}</p>
+                <div class="flex gap-2">
+                  ${!isSample&&html`<button type="button" class="btn btn-ghost text-sm" onClick=${()=>setFace(detectFace(an))}>重新偵測</button>`}
+                  <button type="button" class="btn btn-dark text-sm" onClick=${()=>fileIn.current.click()}>${isSample?'選擇照片':'更換照片'}</button>
+                </div>
+              </div>
+              <input ref=${fileIn} id="file" type="file" accept="image/png,image/jpeg,image/webp" class="hidden" onChange=${e=>{readFile(e.target.files[0]);e.target.value='';}} />
+            </div>
+          </div>
+
+          ${API.base?html`<div class="sub p-4 flex flex-col gap-3">
+            <label class="flex items-center justify-between gap-3 cursor-pointer">
+              <span class="label">AI 轉換 <small>Nano Banana 先把照片畫成 Minecraft 角色</small></span>
+              <input id="ai" type="checkbox" class="w-5 h-5 shrink-0" checked=${aiOn} onChange=${e=>setAiOn(e.target.checked)} style=${{accentColor:'var(--accent-strong)'}} />
+            </label>
+            ${aiOn&&API.needsCode&&html`<input id="code" type="text" autocomplete="off" placeholder="輸入存取碼" value=${code}
+              onInput=${e=>{setCode(e.target.value);try{localStorage.setItem('skin-access-code',e.target.value);}catch{}}} />`}
+            ${aiSrc&&html`<div class="flex flex-wrap items-center gap-3"><span class="text-sm muted">臉部與顏色取樣自</span>
+              <${Seg} label="取樣來源" value=${srcKind} onChange=${v=>loadSource(v==='ai'?aiSrc:photo,v)} options=${[['ai','AI 轉換圖'],['photo','原始照片']]} /></div>`}
+          </div>`:null}
+
+          <div>
+            <label for="desc" class="label mb-2">風格描述（選填） <small>${desc.length}/300</small></label>
+            <textarea id="desc" rows="2" maxLength="300" value=${desc} onInput=${e=>setDesc(e.target.value)} disabled=${!(aiOk||aiOn)}
+              placeholder=${(aiOk||aiOn)?'例如：穿紫色連帽外套、黑色長褲，頭髮改成金色':'開啟 AI 轉換後可以描述想要的風格'}></textarea>
+          </div>
+
+          <div class="min-w-0">
+            <div class="label mb-2">選擇皮膚風格 <small>預覽即時套用你的臉</small></div>
+            <div class="styles" role="group" aria-label="皮膚風格">
+              ${STYLES.map(([id,en,zh])=>html`<button key=${id} type="button" class="style-card" aria-pressed=${style===id} onClick=${()=>setStyle(id)}>
+                <div class="checker rounded-lg flex justify-center py-2"><${Doll} img=${thumbs[id]} aw=${aw} w=${32} /></div>
+                <div class="text-[12px] font-bold mt-2 leading-tight">${zh}</div>
+                <div class="text-[10px] muted leading-tight">${en}</div>
+              </button>`)}
+            </div>
+          </div>
+
+          <details class="sub p-4">
+            <summary class="cursor-pointer font-bold text-sm">皮膚設定 <span class="muted font-normal">· ${styleName[2]} · ${opt.slim?'纖細 3px':'經典 4px'} · ${{none:'無袖',short:'短袖',long:'長袖'}[opt.sleeves]}</span></summary>
+            <div class="flex flex-col gap-4 mt-4">
+              <div class="flex flex-wrap items-center gap-x-4 gap-y-2"><span class="text-sm w-16 muted">手臂</span>
+                <${Seg} label="手臂模型" value=${opt.slim?'slim':'classic'} onChange=${v=>setO('slim',v==='slim')} options=${[['classic','經典 Steve'],['slim','纖細 Alex']]} /></div>
+              <div class="flex flex-wrap items-center gap-x-4 gap-y-2"><span class="text-sm w-16 muted">袖長</span>
+                <${Seg} label="袖長" value=${opt.sleeves} onChange=${v=>setO('sleeves',v)} options=${[['none','無袖'],['short','短袖'],['long','長袖']]} /></div>
+              <div class="flex flex-wrap items-center gap-x-4 gap-y-2"><label for="contrast" class="text-sm w-16 muted">臉部對比</label>
+                <input id="contrast" type="range" min="0" max="80" value=${opt.contrast} onInput=${e=>setO('contrast',+e.target.value)} class="flex-1 min-w-[120px]" />
+                <span class="mono text-xs w-10 text-right">+${opt.contrast}%</span></div>
+              ${reviewOk&&html`<label class="flex items-center gap-2 text-sm"><input id="autoreview" type="checkbox" checked=${autoReview} onChange=${e=>setAutoReview(e.target.checked)} style=${{accentColor:'var(--accent-strong)'}} /> 生成後讓 AI 自動審查並修正</label>`}
+              <label class="flex items-center gap-2 text-sm"><input id="tex" type="checkbox" checked=${opt.texture} onChange=${e=>setO('texture',e.target.checked)} style=${{accentColor:'var(--accent-strong)'}} /> 布料像素紋理</label>
+              <label class="flex items-center gap-2 text-sm"><input id="pat" type="checkbox" checked=${opt.pattern} onChange=${e=>setO('pattern',e.target.checked)} style=${{accentColor:'var(--accent-strong)'}} /> 保留上衣圖案（經典風格）</label>
+              ${colors&&html`<div>
+                <div class="flex items-center justify-between gap-3 mb-2"><span class="text-sm muted">自動取色（點色塊可修改）</span>
+                  ${Object.keys(over).length>0&&html`<button type="button" class="text-sm underline" onClick=${()=>setOver({})}>還原</button>`}</div>
+                <div class="flex flex-wrap gap-3">
+                  ${COLOR_KEYS.map(([k,zh])=>html`<label key=${k} class="flex items-center gap-2 text-sm">
+                    <input id=${'c-'+k} type="color" value=${toHex(colors[k])} onChange=${e=>setOver(o=>({...o,[k]:fromHex(e.target.value)}))} />${zh}
+                  </label>`)}
+                </div>
+                ${style!=='classic'&&html`<p class="text-xs muted mt-2">怪物風格會覆蓋部分顏色，盔甲風格則畫在第二層。</p>`}
+              </div>`}
+            </div>
+          </details>
+
+          <div class="flex flex-wrap items-center gap-3">
+            <button type="button" class="btn btn-primary flex-1 sm:flex-none text-base" onClick=${generate} disabled=${busy||!skin}>
+              ${busy?(aiOn?'Nano Banana 繪製中…':'正在套用描述…'):(aiOn?'AI 生成皮膚':'生成皮膚')}
+            </button>
+            <span class="text-sm muted">${aiOn?'約 10–30 秒 · 經由 Google Gemini':`免費 · 在瀏覽器內處理 · ${desc.trim()&&aiOk?'約 3 秒':'即時'}`}</span>
+          </div>
+        </div>
+
+        <div ref=${resultRef} class="flex flex-col gap-4 min-w-0" style=${{scrollMarginTop:'72px'}}>
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="label">角色預覽</div>
+            <${Seg} label="預覽方向" value=${side} onChange=${setSide} options=${[['front','正面'],['back','背面']]} />
+          </div>
+          ${skin&&html`<div class="checker rounded-2xl flex items-center justify-center py-8"><${Doll} img=${skin} aw=${aw} side=${side} w=${120} /></div>`}
+
+          ${reviewOk&&html`<div class="sub p-4 flex flex-col gap-2" aria-live="polite">
+            <div class="flex items-center justify-between gap-3">
+              <div class="label">AI 審查 <small>${API.base?'Gemini':'Claude'} 檢查臉部位置、顏色與角度</small></div>
+              ${review?.state==='done'&&html`<span class="chip mono font-bold" style=${{color:review.score>=8?'var(--ok)':review.score>=5?'var(--ink)':'var(--warn)'}}>${review.score} / 10</span>`}
+            </div>
+            ${!review&&html`<p class="text-sm muted">按「生成皮膚」後會自動審查，也可以現在檢查目前的皮膚。</p>`}
+            ${review?.state==='running'&&html`<p class="text-sm muted">審查中…</p>`}
+            ${review?.state==='error'&&html`<p class="text-sm" style=${{color:'var(--warn)'}}>${review.text}</p>`}
+            ${review?.state==='done'&&html`<div class="flex flex-col gap-1 text-sm">
+              ${review.fixed.length>0&&html`<p style=${{color:'var(--ok)'}}>已自動修正：${review.fixed.join('、')}</p>`}
+              ${review.issues.length>0?html`<ul class="list-disc pl-5 muted">${review.issues.map((t,i)=>html`<li key=${i}>${t}</li>`)}</ul>`:html`<p class="muted">沒有發現問題。</p>`}
+            </div>`}
+            <div><button type="button" class="btn btn-ghost text-sm" disabled=${review?.state==='running'||busy}
+              onClick=${()=>{attemptRef.current=1;setReviewTick(t=>t+1);}}>${review?'重新審查':'立即審查'}</button></div>
+          </div>`}
+
+          <div class="sub p-3">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
+              <div class="label">皮膚展開圖 <small class="mono">64 × 64 px</small></div>
+              <label class="flex items-center gap-2 text-sm"><input id="grid" type="checkbox" checked=${opt.grid} onChange=${e=>setO('grid',e.target.checked)} style=${{accentColor:'var(--accent-strong)'}} /> 部位框線</label>
+            </div>
+            <canvas ref=${sheetCv} width="1024" height="1024" class="px block w-full h-auto rounded-lg" style=${{maxWidth:'100%',aspectRatio:'1',cursor:'crosshair'}}
+              onPointerMove=${onSheetMove} onPointerLeave=${()=>setHover(null)} aria-label="64×64 Minecraft 皮膚展開圖"></canvas>
+            <div class="mono text-xs mt-2 flex flex-wrap gap-x-4 muted" style=${{minHeight:'1.6em'}}>
+              ${hover?html`<span>X ${hover.x} · Y ${hover.y}</span><span style=${{fontFamily:'var(--font-body)'}}>${hover.where}</span>`
+                     :html`<span>粗框 = Head 正面（X 8–15, Y 8–15）· 虛線 = 第二層</span>`}
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-4">
+            <div class="checker rounded-lg p-1"><canvas ref=${skinCv} width="64" height="64" class="px block" style=${{width:'64px',height:'64px'}} aria-label="實際大小"></canvas></div>
+            <button type="button" class="btn btn-primary flex-1" onClick=${download} disabled=${saving||!skin}>
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M7 1h2v8h2l-3 3-3-3h2zM2 13h12v2H2z"/></svg>
+              ${saving?'準備中…':'下載皮膚 PNG'}
+            </button>
+          </div>
+          ${fallbackUrl&&html`<div class="sub p-3 flex items-center gap-3">
+            <img src=${fallbackUrl} alt="minecraft-skin.png" width="96" height="96" class="px checker rounded" />
+            <p class="text-sm muted">64×64 透明底 PNG 原檔，按右鍵（手機長按）另存即可。</p>
+          </div>`}
+        </div>
+      </div>
+    </section>
+
+    <section id="how" class="wrap" style=${{paddingBlock:'72px 24px',scrollMarginTop:'72px'}}>
+      <h2 class="text-center font-black text-2xl sm:text-3xl">3 步驟建立 Minecraft 皮膚</h2>
+      <div class="grid gap-4 sm:grid-cols-3 mt-8">
+        ${[['上傳照片','選一張正面、光線充足的照片，臉部框會自動對準，也可以手動拖曳調整。'],
+           ['選擇皮膚風格','10 種風格即時預覽，盔甲會畫在第二層，臉部照片照樣保留。'],
+           ['下載您的皮膚','下載 64×64 透明底 PNG，在 Minecraft 啟動器的「造型」頁面上傳即可。']]
+          .map(([t,d],i)=>html`<div key=${i} class="card p-6 flex flex-col gap-3">
+            <div class="step-n">${i+1}</div><h3 class="font-bold text-lg">${t}</h3><p class="muted text-sm">${d}</p>
+          </div>`)}
+      </div>
+    </section>
+
+    <section id="features" style=${{background:'var(--soft)',scrollMarginTop:'72px'}} class="mt-12">
+      <div class="wrap" style=${{paddingBlock:'64px'}}>
+        <h2 class="text-center font-black text-2xl sm:text-3xl">您的臉，Minecraft 風格</h2>
+        <p class="text-center muted mt-2">每一個像素都對應到官方皮膚格式的正確位置。</p>
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mt-8">
+          ${[['1111110001101011000111111','10 種經典皮膚風格','從經典照片色到鑽石盔甲、苦力怕與終界龍，一鍵切換。'],
+             ['0111010101111110111001110','保留面部特徵','臉部區域逐格取平均色，縮成 8×8 貼在 Head 正面（X 8–15, Y 8–15）。'],
+             ['1010101010101010101010101','即時像素風','拖動臉部框或改顏色，展開圖和預覽立即更新，不必等待。'],
+             ['0010000100111110111000100','透明底 PNG','第二層與未使用區域保持透明，Java 版與基岩版都能直接匯入。']]
+            .map(([ic,t,d])=>html`<div key=${t} class="card p-6 flex flex-col gap-3">
+              <${PixelIcon} cells=${ic} /><h3 class="font-bold">${t}</h3><p class="muted text-sm">${d}</p>
+            </div>`)}
+        </div>
+      </div>
+    </section>
+
+
+    <section id="faq" class="wrap" style=${{paddingBlock:'48px 72px',maxWidth:'820px',scrollMarginTop:'72px'}}>
+      <h2 class="text-center font-black text-2xl sm:text-3xl mb-6">常見問題解答</h2>
+      ${[['什麼類型的照片效果最好？','正面、臉部清楚、光線均勻的照片最好。若照片拍到上半身或全身，系統能讀到上衣、褲子和鞋子的顏色；只有大頭照時，沒拍到的部位會用預設色，可在「皮膚設定」裡手動改。'],
+         ['生成的皮膚可以在 Minecraft 中使用嗎？','可以。輸出是標準 64×64 PNG，Java 版在官方啟動器的「造型」頁面上傳，基岩版在角色建立器匯入。記得選擇與這裡相同的手臂模型（經典或纖細）。'],
+         ['有哪些皮膚風格可選？','經典照片色、鑽石盔甲、苦力怕連帽、終界使者、殭屍、骷髏、獄髓騎士、中世紀騎士、終界龍鱗與像素英雄，共 10 種。'],
+         ['可以自訂生成的皮膚嗎？','可以。拖曳臉部框決定取樣範圍，調整手臂粗細、袖長、臉部對比，並修改每個部位的顏色。若可以使用 Claude，也能用一句話描述想要的風格。'],
+         ['照片會被上傳到伺服器嗎？','關閉 AI 轉換時不會：臉部偵測、取色與皮膚繪製全部在你的瀏覽器裡完成。開啟 AI 轉換時，照片會縮到 1024px 以內，經由本站的代理伺服器送到 Google Gemini API 生成角色圖；代理伺服器不儲存照片。']]
+        .map(([q,a],i)=>html`<details key=${i} class="faq" open=${i===0}><summary>${q}</summary><p class="muted pb-5 -mt-1">${a}</p></details>`)}
+    </section>
+
+    <footer class="border-t" style=${{borderColor:'var(--line)'}}>
+      <div class="wrap flex flex-wrap items-center justify-between gap-3 py-6 text-sm muted">
+        <span>像素皮膚工坊 · 非 Mojang 或 Microsoft 官方產品</span>
+        <span class="pixel text-[11px]">SKIN FORMAT 64×64</span>
+      </div>
+    </footer>
+
+    ${toast&&html`<div class="toast" role="status">${toast}</div>`}
+  </div>`;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(html`<${App} />`);
+})();
+</script>

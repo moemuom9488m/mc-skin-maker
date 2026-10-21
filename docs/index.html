@@ -89,7 +89,6 @@ details.faq[open] summary::after{content:"−"}
 <script src="config.js"></script>
 </head>
 <body>
-
 <div id="root"></div>
 
 <script>
@@ -489,6 +488,53 @@ function regionAt(x,y,aw){
   return '未使用區域（保持透明）';
 }
 
+/* ---------- review (AI checks its own skin) ---------- */
+async function scaledCanvas(url,max){
+  const img=await loadImage(url), k=Math.min(1,max/Math.max(img.naturalWidth,img.naturalHeight));
+  const c=document.createElement('canvas'); c.width=Math.round(img.naturalWidth*k); c.height=Math.round(img.naturalHeight*k);
+  const x=c.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,c.width,c.height); x.drawImage(img,0,0,c.width,c.height);
+  return c;
+}
+// Image 1 for the reviewer: the sampled source with the face box drawn on it
+async function sourceWithBox(url,an,face){
+  const c=await scaledCanvas(url,768), k=c.width/an.w, x=c.getContext('2d');
+  x.strokeStyle='#ffd02e'; x.lineWidth=Math.max(2,Math.round(c.width/180));
+  x.strokeRect(face.x*k,face.y*k,face.s*k,face.s*k);
+  return c;
+}
+// Image 2: front + back paper doll and the raw 64×64 texture on neutral grey
+function reviewSheet(skinCv,aw){
+  const c=document.createElement('canvas'); c.width=760; c.height=400;
+  const x=c.getContext('2d'); x.fillStyle='#808080'; x.fillRect(0,0,760,400); x.imageSmoothingEnabled=false;
+  x.fillStyle='#fff'; x.font='bold 16px sans-serif';
+  ['front','back'].forEach((side,i)=>{
+    const d=document.createElement('canvas'); d.width=16; d.height=32; drawDoll(d,skinCv,aw,side);
+    x.drawImage(d,10+i*180,56,160,320); x.fillText(side.toUpperCase(),14+i*180,36);
+  });
+  x.drawImage(skinCv,366,8,384,384);
+  return c;
+}
+function boxToFace(b,an){
+  const [y0,x0,y1,x1]=b.map(Number);
+  if(![y0,x0,y1,x1].every(Number.isFinite)||y1<=y0||x1<=x0) return null;
+  const X0=x0/1000*an.w, X1=x1/1000*an.w, Y0=y0/1000*an.h, Y1=y1/1000*an.h;
+  const s=clamp(Math.max(X1-X0,Y1-Y0)*1.04,8,Math.min(an.w,an.h));
+  if(s<Math.min(an.w,an.h)*.04) return null;
+  return {x:clamp((X0+X1)/2-s/2,0,an.w-s),y:clamp((Y0+Y1)/2-s/2,0,an.h-s),s};
+}
+// Kept in sync with reviewPrompt() in proxy/server.js
+function reviewPrompt(colors,isAi,hasPhoto,style){
+  return [
+    'You are the quality checker for an automatic Minecraft skin generator.',
+    `Image 1: the source picture the skin was sampled from${isAi?' (an AI-drawn Minecraft-style figure)':" (the user's photo)"}. The yellow square marks where the 8x8 face texture was sampled; it should tightly cover the character's face from the top of the forehead (including a hair fringe) to the chin, centered on the face.`,
+    'Image 2: the generated result on a grey background: front view, back view, and the raw 64x64 skin texture.',
+    hasPhoto?"Image 3: the person's original photo, for identity reference.":'',
+    `Selected style: ${style}. Current colors: ${JSON.stringify(colors)}.`,
+    `Check: (1) is the yellow square on the face; (2) are the skin, hair, shirt, pants and shoes colors right compared with the source; (3) is the face readable (eyes visible, not a smear) and does it resemble the person; (4) is image 1 a clean front-facing figure (not turned to the side, not in profile, not cropped).`,
+    'Reply with only JSON: {"score": integer 1-10, "issues": [up to 5 short sentences in Traditional Chinese], "face_box": [ymin, xmin, ymax, xmax] of the face in image 1 on a 0-1000 scale, "colors": {only the keys among skin, hair, shirt, pants, shoes whose color is clearly wrong, as "#rrggbb"}, "regenerate": true only if image 1 itself is unusable (angled or profile view, cropped, wrong proportions, face unrecognizable), "regenerate_hint": "short English instruction for the image model to fix it, or empty"}',
+  ].filter(Boolean).join('\n');
+}
+
 /* ---------- UI pieces ---------- */
 const COLOR_KEYS=[['skin','膚色'],['hair','頭髮'],['shirt','上衣'],['pants','褲子'],['shoes','鞋子']];
 
@@ -569,6 +615,11 @@ function App(){
   const [drag,setDrag]=useState(false);
   const [theme,setTheme]=useState(0);
   const [aiOk,setAiOk]=useState(true);
+  const [reviewOk,setReviewOk]=useState(!!API.base);
+  const [autoReview,setAutoReview]=useState(true);
+  const [review,setReview]=useState(null);
+  const [reviewTick,setReviewTick]=useState(0);
+  const attemptRef=useRef(0);
   const sheetCv=useRef(null), skinCv=useRef(null), fileIn=useRef(null), resultRef=useRef(null);
   const caps=useRef({});
 
@@ -607,7 +658,9 @@ function App(){
   useEffect(()=>{ (async()=>{
     if(!window.claude?.use){ caps.current={downloads:null,sample:null}; setAiOk(false); return; }
     const [d,s]=await Promise.all([window.claude.use('downloads').catch(()=>null),window.claude.use('sample').catch(()=>null)]);
-    caps.current={downloads:d,sample:s}; setAiOk(!!s);
+    const lim=s&&s.limits?await s.limits().catch(()=>null):null;
+    caps.current={downloads:d,sample:s,images:!!lim?.images}; setAiOk(!!s);
+    if(lim?.images) setReviewOk(true);
   })(); },[]);
 
   const detected=useMemo(()=>an&&face?detectColors(an,face,srcKind==='ai'):null,[an,face,srcKind]);
@@ -629,7 +682,63 @@ function App(){
     setHover({x,y,where:regionAt(x,y,aw)});
   };
 
-  const runAi=async()=>{
+  const runReview=async()=>{
+    setReview({state:'running'});
+    const hex=Object.fromEntries(COLOR_KEYS.map(([k])=>[k,toHex(colors[k])]));
+    const isAi=srcKind==='ai', withPhoto=isAi&&photo;
+    try{
+      const srcCv=await sourceWithBox(src,an,face), resCv=reviewSheet(skinCv.current,aw);
+      const photoCv=withPhoto?await scaledCanvas(photo,768):null;
+      let r;
+      if(API.base){
+        const b64=(c,t)=>c.toDataURL(t,.88).split(',')[1];
+        const res=await fetch(API.base.replace(/\/$/,'')+'/api/review',{
+          method:'POST',
+          headers:{'Content-Type':'application/json',...(code?{'x-access-code':code}:{})},
+          body:JSON.stringify({source:b64(srcCv,'image/jpeg'),result:b64(resCv,'image/png'),photo:photoCv?b64(photoCv,'image/jpeg'):null,colors:hex,ai:isAi,style})
+        });
+        r=await res.json().catch(()=>({}));
+        if(!res.ok) throw new Error(r.error||`伺服器回應 ${res.status}`);
+      }else{
+        const blob=(c,t)=>new Promise(ok=>c.toBlob(ok,t,.88));
+        const images=[await blob(srcCv,'image/jpeg'),await blob(resCv,'image/png')];
+        if(photoCv) images.push(await blob(photoCv,'image/jpeg'));
+        r=await caps.current.sample.json(reviewPrompt(hex,isAi,!!photoCv,style),{images});
+      }
+      if(!r||typeof r!=='object') throw new Error('審查結果格式不正確');
+
+      const fixed=[];
+      const nf=Array.isArray(r.face_box)?boxToFace(r.face_box,an):null;
+      if(nf&&(Math.abs(nf.x-face.x)>face.s*.08||Math.abs(nf.y-face.y)>face.s*.08||Math.abs(nf.s-face.s)>face.s*.12)){ setFace(nf); fixed.push('臉部框位置'); }
+      if(r.colors&&typeof r.colors==='object'){
+        const o={};
+        for(const [k,zh] of COLOR_KEYS){
+          const v=r.colors[k]; if(typeof v!=='string'||!/^#[0-9a-f]{6}$/i.test(v)) continue;
+          const c=fromHex(v), cur=one(colors[k]);
+          if(Math.hypot(c[0]-cur[0],c[1]-cur[1],c[2]-cur[2])>30){ o[k]=c; fixed.push(zh+'顏色'); }
+        }
+        if(Object.keys(o).length) setOver(p=>({...p,...o}));
+      }
+      const score=clamp(Math.round(Number(r.score)||0),1,10);
+      const issues=Array.isArray(r.issues)?r.issues.slice(0,5).map(String):[];
+      setReview({state:'done',score,issues,fixed});
+
+      if(r.regenerate&&score<7){
+        if(aiOn&&API.base&&attemptRef.current<1){
+          attemptRef.current++;
+          say('審查建議重畫，正在依修正指示重新生成…');
+          runAi(String(r.regenerate_hint||'').slice(0,300));
+        }else if(!aiOn&&API.base) say('這張照片不適合直接取樣，開啟「AI 轉換」可以先把角色轉成正面。');
+      }
+    }catch(e){
+      const code=e?.code;
+      if(code==='not_granted'||code==='sampling_disabled'||code==='images_unavailable'){ setReviewOk(false); setReview(null); say('未允許使用 Claude 看圖，自動審查已停用。'); }
+      else setReview({state:'error',text:e instanceof TypeError?'連不到審查伺服器。':(code==='rate_limited'?'請求太頻繁，稍等一下再試。':'審查失敗：'+(e?.message||'未知錯誤'))});
+    }
+  };
+  useEffect(()=>{ if(reviewTick&&skin) runReview(); },[reviewTick]);
+
+  const runAi=async(fix='')=>{
     setBusy(true);
     try{
       const img=await loadImage(photo);
@@ -639,14 +748,15 @@ function App(){
       const res=await fetch(API.base.replace(/\/$/,'')+'/api/stylize',{
         method:'POST',
         headers:{'Content-Type':'application/json',...(code?{'x-access-code':code}:{})},
-        body:JSON.stringify({image:c.toDataURL('image/jpeg',.9).split(',')[1],mime:'image/jpeg',style,desc:desc.trim().slice(0,300)})
+        body:JSON.stringify({image:c.toDataURL('image/jpeg',.9).split(',')[1],mime:'image/jpeg',style,desc:desc.trim().slice(0,300),fix})
       });
       const j=await res.json().catch(()=>({}));
       if(!res.ok||!j.image) throw new Error(j.error||`伺服器回應 ${res.status}`);
       const url=`data:${j.mime||'image/png'};base64,${j.image}`;
       setAiSrc(url);
       const f=await loadSource(url,'ai');
-      say(f.auto?'Nano Banana 轉換完成，已自動對準臉部。':'轉換完成，但沒有找到臉，請手動把黃框拖到頭上。');
+      if(autoReview&&reviewOk) setReviewTick(t=>t+1);
+      else say(f.auto?'Nano Banana 轉換完成，已自動對準臉部。':'轉換完成，但沒有找到臉，請手動把黃框拖到頭上。');
     }catch(e){
       say(e instanceof TypeError?'連不到 AI 伺服器，請檢查網路或稍後再試。':'AI 轉換失敗：'+e.message);
     }finally{ setBusy(false); }
@@ -654,6 +764,7 @@ function App(){
   };
 
   const generate=async()=>{
+    attemptRef.current=0;
     if(aiOn&&API.base) return runAi();
     const text=desc.trim();
     if(text&&caps.current.sample){
@@ -681,9 +792,10 @@ function App(){
         else if(e?.code==='rate_limited') say('請求太頻繁，稍等一下再試。');
         else if(e?.code!=='cancelled') say('風格描述沒有套用成功，可以換個說法再試一次。');
       }finally{ setBusy(false); }
-    }else{
+    }else if(!(autoReview&&reviewOk)){
       say('皮膚已生成，可以下載了。');
     }
+    if(autoReview&&reviewOk) setReviewTick(t=>t+1);
     if(matchMedia('(max-width: 1023px)').matches) resultRef.current?.scrollIntoView({behavior:'smooth',block:'start'});
   };
 
@@ -792,6 +904,7 @@ function App(){
               <div class="flex flex-wrap items-center gap-x-4 gap-y-2"><label for="contrast" class="text-sm w-16 muted">臉部對比</label>
                 <input id="contrast" type="range" min="0" max="80" value=${opt.contrast} onInput=${e=>setO('contrast',+e.target.value)} class="flex-1 min-w-[120px]" />
                 <span class="mono text-xs w-10 text-right">+${opt.contrast}%</span></div>
+              ${reviewOk&&html`<label class="flex items-center gap-2 text-sm"><input id="autoreview" type="checkbox" checked=${autoReview} onChange=${e=>setAutoReview(e.target.checked)} style=${{accentColor:'var(--accent-strong)'}} /> 生成後讓 AI 自動審查並修正</label>`}
               <label class="flex items-center gap-2 text-sm"><input id="tex" type="checkbox" checked=${opt.texture} onChange=${e=>setO('texture',e.target.checked)} style=${{accentColor:'var(--accent-strong)'}} /> 布料像素紋理</label>
               <label class="flex items-center gap-2 text-sm"><input id="pat" type="checkbox" checked=${opt.pattern} onChange=${e=>setO('pattern',e.target.checked)} style=${{accentColor:'var(--accent-strong)'}} /> 保留上衣圖案（經典風格）</label>
               ${colors&&html`<div>
@@ -821,6 +934,22 @@ function App(){
             <${Seg} label="預覽方向" value=${side} onChange=${setSide} options=${[['front','正面'],['back','背面']]} />
           </div>
           ${skin&&html`<div class="checker rounded-2xl flex items-center justify-center py-8"><${Doll} img=${skin} aw=${aw} side=${side} w=${120} /></div>`}
+
+          ${reviewOk&&html`<div class="sub p-4 flex flex-col gap-2" aria-live="polite">
+            <div class="flex items-center justify-between gap-3">
+              <div class="label">AI 審查 <small>${API.base?'Gemini':'Claude'} 檢查臉部位置、顏色與角度</small></div>
+              ${review?.state==='done'&&html`<span class="chip mono font-bold" style=${{color:review.score>=8?'var(--ok)':review.score>=5?'var(--ink)':'var(--warn)'}}>${review.score} / 10</span>`}
+            </div>
+            ${!review&&html`<p class="text-sm muted">按「生成皮膚」後會自動審查，也可以現在檢查目前的皮膚。</p>`}
+            ${review?.state==='running'&&html`<p class="text-sm muted">審查中…</p>`}
+            ${review?.state==='error'&&html`<p class="text-sm" style=${{color:'var(--warn)'}}>${review.text}</p>`}
+            ${review?.state==='done'&&html`<div class="flex flex-col gap-1 text-sm">
+              ${review.fixed.length>0&&html`<p style=${{color:'var(--ok)'}}>已自動修正：${review.fixed.join('、')}</p>`}
+              ${review.issues.length>0?html`<ul class="list-disc pl-5 muted">${review.issues.map((t,i)=>html`<li key=${i}>${t}</li>`)}</ul>`:html`<p class="muted">沒有發現問題。</p>`}
+            </div>`}
+            <div><button type="button" class="btn btn-ghost text-sm" disabled=${review?.state==='running'||busy}
+              onClick=${()=>{attemptRef.current=1;setReviewTick(t=>t+1);}}>${review?'重新審查':'立即審查'}</button></div>
+          </div>`}
 
           <div class="sub p-3">
             <div class="flex flex-wrap items-center justify-between gap-3 mb-2">

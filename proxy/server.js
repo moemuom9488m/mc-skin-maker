@@ -4,11 +4,12 @@ import http from 'node:http';
 
 const PORT = process.env.PORT || 8080;
 const MODEL = process.env.MODEL || 'gemini-3.1-flash-image';
+const REVIEW_MODEL = process.env.REVIEW_MODEL || 'gemini-2.5-flash';
 const API_KEY = process.env.GEMINI_API_KEY || '';
 const LOCATION = process.env.VERTEX_LOCATION || 'global';
 const ORIGINS = (process.env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
 const ACCESS_CODE = process.env.ACCESS_CODE || '';
-const RATE_PER_HOUR = Number(process.env.RATE_PER_HOUR || 20);
+const RATE_PER_HOUR = Number(process.env.RATE_PER_HOUR || 40);
 const MAX_BODY = 8 * 1024 * 1024;
 
 const STYLE_TEXT = {
@@ -24,16 +25,31 @@ const STYLE_TEXT = {
   hero: 'pixel superhero: bright saturated outfit, gold chest emblem and belt, red boots',
 };
 
-function buildPrompt(style, desc) {
+function buildPrompt(style, desc, fix) {
   return [
     'Turn the person in this photo into one Minecraft player character.',
     'Front view, standing straight and facing the camera, arms straight down at the sides, legs together, full body from the top of the head to the feet visible and centered.',
+    'If the photo is taken at an angle, in profile, from above or below, or shows only part of the body, rotate the person to face the camera directly, reconstruct the hidden side of the face symmetrically, and invent the missing body parts to match their outfit.',
     'Exact Minecraft proportions: a cube head, a rectangular torso, straight block arms and legs (head 8, torso 12, legs 12 units tall).',
     'Flat pixel-art texture with clearly visible square pixels, no anti-aliasing, no outlines, no text, no logo.',
     'Keep the person recognizable on the front of the cube head: hairstyle and hair color, skin tone, eye color, glasses or facial hair if present. Keep their clothing colors on the torso, arms and legs.',
     `Style: ${STYLE_TEXT[style] || STYLE_TEXT.classic}.`,
     desc ? `Extra request from the user: ${desc}` : '',
+    fix ? `A quality check of the previous attempt asked for this correction: ${fix}` : '',
     'Plain flat light grey background (#d9d9d9), no shadow, no scenery, portrait 3:4 framing.',
+  ].filter(Boolean).join('\n');
+}
+
+// Kept in sync with reviewPrompt() in src/page.html
+function reviewPrompt(colors, isAi, hasPhoto, style) {
+  return [
+    'You are the quality checker for an automatic Minecraft skin generator.',
+    `Image 1: the source picture the skin was sampled from${isAi ? ' (an AI-drawn Minecraft-style figure)' : " (the user's photo)"}. The yellow square marks where the 8x8 face texture was sampled; it should tightly cover the character's face from the top of the forehead (including a hair fringe) to the chin, centered on the face.`,
+    'Image 2: the generated result on a grey background: front view, back view, and the raw 64x64 skin texture.',
+    hasPhoto ? "Image 3: the person's original photo, for identity reference." : '',
+    `Selected style: ${style}. Current colors: ${JSON.stringify(colors)}.`,
+    'Check: (1) is the yellow square on the face; (2) are the skin, hair, shirt, pants and shoes colors right compared with the source; (3) is the face readable (eyes visible, not a smear) and does it resemble the person; (4) is image 1 a clean front-facing figure (not turned to the side, not in profile, not cropped).',
+    'Reply with only JSON: {"score": integer 1-10, "issues": [up to 5 short sentences in Traditional Chinese], "face_box": [ymin, xmin, ymax, xmax] of the face in image 1 on a 0-1000 scale, "colors": {only the keys among skin, hair, shirt, pants, shoes whose color is clearly wrong, as "#rrggbb"}, "regenerate": true only if image 1 itself is unusable (angled or profile view, cropped, wrong proportions, face unrecognizable), "regenerate_hint": "short English instruction for the image model to fix it, or empty"}',
   ].filter(Boolean).join('\n');
 }
 
@@ -50,24 +66,45 @@ async function metadata(path) {
   return r.text();
 }
 
-async function callModel(body) {
+async function gemini(model, body) {
   let url, headers = { 'Content-Type': 'application/json' };
   if (API_KEY) {
-    url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+    url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
     headers['x-goog-api-key'] = API_KEY;
   } else {
     const project = process.env.GOOGLE_CLOUD_PROJECT || await metadata('project/project-id');
     const { access_token } = JSON.parse(await metadata('instance/service-accounts/default/token'));
     const host = LOCATION === 'global' ? 'aiplatform.googleapis.com' : `${LOCATION}-aiplatform.googleapis.com`;
-    url = `https://${host}/v1/projects/${project}/locations/${LOCATION}/publishers/google/models/${MODEL}:generateContent`;
+    url = `https://${host}/v1/projects/${project}/locations/${LOCATION}/publishers/google/models/${model}:generateContent`;
     headers.Authorization = `Bearer ${access_token}`;
   }
   const r = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), signal: AbortSignal.timeout(150e3) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) {
-    console.error('model error', r.status, JSON.stringify(j).slice(0, 800));
+    console.error('model error', model, r.status, JSON.stringify(j).slice(0, 800));
     throw Object.assign(new Error(r.status === 429 ? 'AI 用量已達上限，請稍後再試。' : `模型呼叫失敗（${r.status}）`), { status: 502 });
   }
+  return j;
+}
+
+async function review(body) {
+  const parts = [
+    { text: reviewPrompt(body.colors || {}, !!body.ai, !!body.photo, String(body.style || 'classic')) },
+    { inline_data: { mime_type: 'image/jpeg', data: body.source } },
+    { inline_data: { mime_type: 'image/png', data: body.result } },
+  ];
+  if (body.photo) parts.push({ inline_data: { mime_type: 'image/jpeg', data: body.photo } });
+  const j = await gemini(REVIEW_MODEL, {
+    contents: [{ role: 'user', parts }],
+    generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },
+  });
+  const text = (j.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
+  try { return JSON.parse(text); }
+  catch { console.error('review not json', text.slice(0, 300)); throw Object.assign(new Error('審查結果格式不正確，請再試一次。'), { status: 502 }); }
+}
+
+async function stylize(body) {
+  const j = await gemini(MODEL, body);
   const cand = j.candidates?.[0];
   const part = cand?.content?.parts?.find(p => p.inlineData || p.inline_data);
   if (!part) {
@@ -101,7 +138,7 @@ http.createServer(async (req, res) => {
     return res.end();
   }
   if (req.method === 'GET' && req.url === '/healthz') return send(res, 200, { ok: true, model: MODEL, auth: API_KEY ? 'gemini-api' : 'vertex' }, origin);
-  if (req.method !== 'POST' || req.url !== '/api/stylize') return send(res, 404, { error: 'not found' }, origin);
+  if (req.method !== 'POST' || !['/api/stylize', '/api/review'].includes(req.url)) return send(res, 404, { error: 'not found' }, origin);
   if (ORIGINS.length && !origin) return send(res, 403, { error: '這個網站沒有使用權限。' }, '');
   if (ACCESS_CODE && req.headers['x-access-code'] !== ACCESS_CODE) return send(res, 401, { error: '存取碼不正確。' }, origin);
 
@@ -111,13 +148,19 @@ http.createServer(async (req, res) => {
   try {
     let size = 0; const chunks = [];
     for await (const c of req) { size += c.length; if (size > MAX_BODY) return send(res, 413, { error: '圖片太大，請換一張較小的照片。' }, origin); chunks.push(c); }
-    const { image, mime = 'image/jpeg', style = 'classic', desc = '' } = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    if (req.url === '/api/review') {
+      if (typeof body.source !== 'string' || typeof body.result !== 'string' || !body.source || !body.result) return send(res, 400, { error: '缺少審查圖片。' }, origin);
+      if (body.photo != null && typeof body.photo !== 'string') return send(res, 400, { error: '照片格式不正確。' }, origin);
+      return send(res, 200, await review(body), origin);
+    }
+    const { image, mime = 'image/jpeg', style = 'classic', desc = '', fix = '' } = body;
     if (typeof image !== 'string' || !image) return send(res, 400, { error: '缺少圖片。' }, origin);
     if (!/^image\/(jpeg|png|webp)$/.test(mime)) return send(res, 400, { error: '只接受 JPG、PNG、WebP。' }, origin);
 
-    const out = await callModel({
+    const out = await stylize({
       contents: [{ role: 'user', parts: [
-        { text: buildPrompt(String(style), String(desc).slice(0, 300)) },
+        { text: buildPrompt(String(style), String(desc).slice(0, 300), String(fix).slice(0, 300)) },
         { inline_data: { mime_type: mime, data: image } },
       ] }],
       generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: '3:4' } },

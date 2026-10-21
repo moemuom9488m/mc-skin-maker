@@ -27,7 +27,7 @@ gcloud projects add-iam-policy-binding $P --member="serviceAccount:$N-compute@de
 ```powershell
 gcloud run deploy mc-skin-proxy --source . --region asia-east1 --allow-unauthenticated `
   --max-instances 2 --concurrency 4 --timeout 180 --memory 512Mi `
-  --set-env-vars "MODEL=gemini-3.1-flash-image,ALLOWED_ORIGINS=https://moemuom9488m.github.io,ACCESS_CODE=自訂存取碼,RATE_PER_HOUR=20"
+  --set-env-vars "MODEL=gemini-3.1-flash-image,ALLOWED_ORIGINS=https://moemuom9488m.github.io,ACCESS_CODE=自訂存取碼,RATE_PER_HOUR=40"
 ```
 
 `--allow-unauthenticated` 讓瀏覽器可以直接呼叫這個服務，所以任何知道網址的人都能送請求。下列設定用來限制濫用，**不要省略 `ACCESS_CODE`**：
@@ -36,7 +36,8 @@ gcloud run deploy mc-skin-proxy --source . --region asia-east1 --allow-unauthent
 |---|---|
 | `ACCESS_CODE` | 存取碼，網頁上輸入正確才會呼叫模型 |
 | `ALLOWED_ORIGINS` | 只回應這些網站來源的瀏覽器請求 |
-| `RATE_PER_HOUR` | 每個 IP 每小時次數上限（預設 20） |
+| `RATE_PER_HOUR` | 每個 IP 每小時次數上限（預設 40；每次生成約用 2 次：轉換＋審查） |
+| `REVIEW_MODEL` | 審查用的模型，預設 `gemini-2.5-flash` |
 | `MODEL` | 模型 ID，預設 `gemini-3.1-flash-image`（Nano Banana 2） |
 | `VERTEX_LOCATION` | Vertex AI 區域，預設 `global` |
 

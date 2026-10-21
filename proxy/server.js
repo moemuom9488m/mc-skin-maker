@@ -45,7 +45,8 @@ function buildPrompt(style, desc, fix, subject) {
       ? 'The photo may not show the back, so invent a back view that matches: the back of the head with the ears, and the fur colors and markings of the back.'
       : 'The photo never shows the back, so invent a back view that matches: the back of the hairstyle, the back of the same clothes, the back of the shoes.',
     'Exact Minecraft proportions: a cube head, a rectangular torso, straight block arms and legs (head 8, torso 12, legs 12 units tall).',
-    'Flat pixel-art texture with clearly visible square pixels, no anti-aliasing, no outlines, no text, no logo.',
+    'Draw it at the exact resolution of a 64x64 Minecraft skin, using big square texels of one equal size everywhere: the head front is exactly 8x8 texels, the torso 8x12, each arm 4x12 and each leg 4x12. Every texel is one flat colour; no detail finer than one texel (eyes, eyebrows and mouth are whole texels), like a real Minecraft player model seen in game.',
+    'Flat pixel-art texture with clearly visible square pixels, no anti-aliasing, no gradients, no outlines, no text, no logo.',
     animal
       ? 'Keep the animal recognizable: its face (eye color, nose, muzzle, whisker marks) on the front of the cube head, its ears painted flat as pixels inside the head cube (nothing sticking out of the cubes), and its exact fur colors and markings on the torso, arms and legs, with paws at the ends of the arms and legs.'
       : 'Keep the person recognizable on the front of the cube head: hairstyle and hair color, skin tone, eye color, glasses or facial hair if present. Keep their clothing colors on the torso, arms and legs.',

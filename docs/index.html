@@ -649,12 +649,22 @@ function faceFromSeg(seg){
   const [x0,y0,x1,y1]=seg.head, s=x1-x0;
   return y1-y0===s?{x:x0,y:y0,s,auto:true}:{x:x0,y:y0,s,h:y1-y0,auto:true};
 }
-// cols×rows texel colours of rect r from only the character pixels of a segmented image. Per-channel
-// median, not mean, so thin stripes and eyes stay crisp. Texels with no character pixels copy their
+// cols×rows texel colours of rect r from only the character pixels of a segmented image. Dominant
+// colour, not mean, so thin stripes and eyes stay crisp. Texels with no character pixels copy their
 // nearest filled neighbour. null if the rect has no character at all.
 function sampleRect(an,r,cols,rows,mask){
   const [x0,y0,x1,y1]=r, m=mask||an.seg.mask, cw=(x1-x0)/cols, ch=(y1-y0)/rows, out=new Array(cols*rows).fill(null);
-  const med=a=>{a.sort((p,q)=>p-q);return a[a.length>>1];};
+  // Dominant colour of each texel: pixel art keeps its exact palette instead of a blend that never existed.
+  // Pixels are bucketed by 4 bits per channel; the biggest bucket's members are averaged.
+  const dominant=(R,G,B)=>{
+    const bk=new Map(); let best=null;
+    for(let k=0;k<R.length;k++){
+      const key=(R[k]>>4)<<8|(G[k]>>4)<<4|(B[k]>>4); let e=bk.get(key);
+      if(!e){ e=[0,0,0,0]; bk.set(key,e); } e[0]++; e[1]+=R[k]; e[2]+=G[k]; e[3]+=B[k];
+      if(!best||e[0]>best[0]) best=e;
+    }
+    return [best[1]/best[0],best[2]/best[0],best[3]/best[0]].map(Math.round);
+  };
   for(let j=0;j<rows;j++)for(let i=0;i<cols;i++){
     const R=[],G=[],B=[];
     const X0=Math.floor(x0+(i+.15)*cw), X1=Math.max(X0+1,Math.ceil(x0+(i+.85)*cw));
@@ -662,7 +672,7 @@ function sampleRect(an,r,cols,rows,mask){
     for(let y=clamp(Y0,0,an.h-1);y<clamp(Y1,1,an.h);y++)for(let x=clamp(X0,0,an.w-1);x<clamp(X1,1,an.w);x++){
       const p=y*an.w+x; if(!m[p]) continue; const q=p*4; R.push(an.d[q]); G.push(an.d[q+1]); B.push(an.d[q+2]);
     }
-    if(R.length) out[j*cols+i]=[med(R),med(G),med(B)];
+    if(R.length) out[j*cols+i]=dominant(R,G,B);
   }
   const filled=out.map((c,k)=>c?k:-1).filter(k=>k>=0);
   if(!filled.length) return null;

@@ -107,8 +107,18 @@ async function gemini(model, body) {
     url = `https://${host}/v1/projects/${project}/locations/${LOCATION}/publishers/google/models/${model}:generateContent`;
     headers.Authorization = `Bearer ${access_token}`;
   }
-  const r = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), signal: AbortSignal.timeout(150e3) });
-  const j = await r.json().catch(() => ({}));
+  // 429/503 on the preview image models is shared-capacity pressure, not our quota, and usually clears in a few
+  // seconds: retry up to twice with a short, jittered wait (Retry-After if given, capped) before giving up
+  let r, j;
+  for (let attempt = 0; ; attempt++) {
+    r = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), signal: AbortSignal.timeout(150e3) });
+    j = await r.json().catch(() => ({}));
+    if (r.ok || (r.status !== 429 && r.status !== 503) || attempt >= 2) break;
+    const ra = Number(r.headers.get('retry-after'));
+    const wait = Math.min(8000, (ra > 0 ? ra * 1000 : 2500 * (attempt + 1)) + Math.random() * 700);
+    console.error('model busy, retrying', model, r.status, `attempt ${attempt + 1}`, `wait ${Math.round(wait)}ms`);
+    await new Promise(res => setTimeout(res, wait));
+  }
   if (!r.ok) {
     console.error('model error', model, r.status, JSON.stringify(j).slice(0, 800));
     throw Object.assign(new Error(r.status === 429 ? 'AI 用量已達上限，請稍後再試。' : `模型呼叫失敗（${r.status}）`), { status: 502 });

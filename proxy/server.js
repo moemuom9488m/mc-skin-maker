@@ -54,8 +54,8 @@ function buildPrompt(style, desc, fix, subject) {
     fix ? `A quality check of the previous attempt asked for this correction: ${fix}` : '',
     // Animals are often grey or white, so they get a background colour no fur has
     animal
-      ? 'Plain flat magenta background (#ff00ff), no shadow, no scenery, no labels, landscape 3:2 canvas.'
-      : 'Plain flat light grey background (#d9d9d9), no shadow, no scenery, no labels, landscape 3:2 canvas.',
+      ? 'Plain flat magenta background (#ff00ff), no shadow, no scenery, landscape 3:2 canvas. Do not write any text, letters or words anywhere (no \"FRONT\" or \"BACK\" labels).'
+      : 'Plain flat light grey background (#d9d9d9), no shadow, no scenery, landscape 3:2 canvas. Do not write any text, letters or words anywhere (no \"FRONT\" or \"BACK\" labels).',
   ].filter(Boolean).join('\n');
 }
 

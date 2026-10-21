@@ -70,6 +70,12 @@ canvas.px,img.px{image-rendering:pixelated;image-rendering:crisp-edges}
   background-image:linear-gradient(to right,rgba(255,255,255,.4) 1px,transparent 1px),linear-gradient(to bottom,rgba(255,255,255,.4) 1px,transparent 1px);background-size:12.5% 12.5%}
 .cropbox .handle{position:absolute;right:-10px;bottom:-10px;width:20px;height:20px;border-radius:6px;background:var(--accent);border:2px solid #fff;cursor:nwse-resize;touch-action:none}
 .cropbox .tag{position:absolute;left:-2px;top:-22px;background:var(--accent);color:var(--accent-ink);font-size:10px;padding:2px 6px;white-space:nowrap;border-radius:4px 4px 0 0}
+.partbox{position:absolute;border:2px solid var(--c);background:color-mix(in srgb,var(--c) 12%,transparent);cursor:move;touch-action:none}
+.partbox:hover,.partbox:focus-visible{background:color-mix(in srgb,var(--c) 26%,transparent)}
+.partbox .ptag{position:absolute;left:-2px;top:-2px;background:var(--c);color:#111;font-size:10px;line-height:14px;padding:0 4px;pointer-events:none;white-space:nowrap}
+.partbox .pt{position:absolute;width:14px;height:14px;border-radius:50%;background:var(--c);border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);touch-action:none;z-index:2}
+.partbox .pt0{left:-8px;top:-8px;cursor:nwse-resize}.partbox .pt1{right:-8px;top:-8px;cursor:nesw-resize}
+.partbox .pt2{right:-8px;bottom:-8px;cursor:nwse-resize}.partbox .pt3{left:-8px;bottom:-8px;cursor:nesw-resize}
 .styles{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;padding:4px 2px 10px}
 .style-card{flex:0 0 112px;scroll-snap-align:start;border:2px solid var(--line);border-radius:14px;background:var(--panel);padding:8px;cursor:pointer;text-align:center;transition:border-color .15s,transform .15s}
 .style-card:hover{transform:translateY(-2px)}
@@ -634,6 +640,14 @@ function segmentFigure(an){
     armL:tight(ax0,armTop,hx0,armBot), armR:tight(hx1,armTop,ax1,armBot),
     legL:tight(hx0,armBot,split,legBot), legR:tight(split,armBot,hx1,legBot)};
 }
+// Part rectangles in Minecraft proportions from the head box, used when silhouette segmentation fails,
+// so the parts editor always has something to start from
+function defaultParts(an,f){
+  if(!f) return null;
+  const s=f.s, t=f.y+(f.h||s), fb=figureBounds(an), h=fb&&fb.bottom>t+s?(fb.bottom+1-t)/2:1.5*s, a=s/2;
+  return {mask:figureMask(an), head:[f.x,f.y,f.x+s,t], body:[f.x,t,f.x+s,t+h], armL:[f.x-a,t,f.x,t+h], armR:[f.x+s,t,f.x+s+a,t+h],
+    legL:[f.x,t+h,f.x+s/2,t+2*h], legR:[f.x+s/2,t+h,f.x+s,t+2*h]};
+}
 // Face box covering the whole segmented head (h when it isn't square, e.g. with ears)
 function faceFromSeg(seg){
   const [x0,y0,x1,y1]=seg.head, s=x1-x0;
@@ -706,6 +720,11 @@ function drawDoll(cv,src,aw,side){
   ];
   for(const L of layers){
     const g=(k,w,h,d)=>box(L[k][0],L[k][1],w,h,d)[side];
+    if(side==='right'){
+      // side view from the character's right: right faces only, the arm drawn over the torso
+      blit(g('head',8,8,8),4,0); blit(g('body',8,12,4),6,8); blit(g('rl',4,12,4),6,20); blit(g('ra',aw,12,4),6,8);
+      continue;
+    }
     blit(g('head',8,8,8),4,0); blit(g('body',8,12,4),4,8);
     const ra=g('ra',aw,12,4), la=g('la',aw,12,4), rl=g('rl',4,12,4), ll=g('ll',4,12,4);
     if(side==='front'){ blit(ra,4-aw,8); blit(la,12,8); blit(rl,4,20); blit(ll,8,20); }
@@ -792,6 +811,47 @@ function PixelIcon({cells,color='var(--accent-strong)'}){
   </svg>`;
 }
 
+// Draggable part rectangles over an AI figure. armL/legL are on the viewer's left in that view.
+const PART_META=[['head','頭','#ffd02e'],['body','身體','#ff7a7a'],['armL','手','#5cb8ff'],['armR','手','#5cb8ff'],['legL','腳','#5fd97a'],['legR','腳','#5fd97a']];
+function PartsEditor({src,an,parts,setParts}){
+  const wrap=useRef(null);
+  // mode 'move' drags the whole box; 0-3 drag one corner (top-left, top-right, bottom-right, bottom-left)
+  const start=(e,key,mode)=>{
+    e.preventDefault(); e.stopPropagation();
+    const rect=wrap.current.getBoundingClientRect(), k=an.w/rect.width, s0={px:e.clientX,py:e.clientY,r:parts[key].slice()};
+    const move=ev=>{
+      const dx=(ev.clientX-s0.px)*k, dy=(ev.clientY-s0.py)*k; let [x0,y0,x1,y1]=s0.r;
+      if(mode==='move'){ const w=x1-x0,h=y1-y0; x0=clamp(x0+dx,0,an.w-w); y0=clamp(y0+dy,0,an.h-h); x1=x0+w; y1=y0+h; }
+      else{
+        if(mode===0||mode===3) x0=clamp(x0+dx,0,x1-4); else x1=clamp(x1+dx,x0+4,an.w);
+        if(mode===0||mode===1) y0=clamp(y0+dy,0,y1-4); else y1=clamp(y1+dy,y0+4,an.h);
+      }
+      setParts(p=>({...p,[key]:[x0,y0,x1,y1].map(Math.round)}));
+    };
+    const up=()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);};
+    window.addEventListener('pointermove',move); window.addEventListener('pointerup',up);
+  };
+  const onKey=(e,key)=>{
+    const st=e.shiftKey?6:1, d={ArrowLeft:[-st,0],ArrowRight:[st,0],ArrowUp:[0,-st],ArrowDown:[0,st]}[e.key]; if(!d) return;
+    e.preventDefault(); const [x0,y0,x1,y1]=parts[key], w=x1-x0, h=y1-y0;
+    const nx=clamp(x0+d[0],0,an.w-w), ny=clamp(y0+d[1],0,an.h-h);
+    setParts(p=>({...p,[key]:[nx,ny,nx+w,ny+h]}));
+  };
+  const pc=(v,t)=>v/t*100+'%';
+  return html`<div ref=${wrap} class="relative select-none mx-auto rounded-xl" style=${{maxWidth:'100%',width:an.w>=an.h?'100%':(an.w/an.h*320)+'px'}}>
+    <img src=${src} alt="AI 畫的角色" class="block w-full h-auto rounded-xl" draggable="false" />
+    ${PART_META.slice().reverse().map(([key,zh,c])=>{ const r=parts[key]; if(!r) return null; const [x0,y0,x1,y1]=r;
+      return html`<div key=${key} class="partbox" tabIndex="0" role="group" aria-label=${zh+'取樣框：拖曳移動，拖曳圓點調整邊界，方向鍵微調'}
+        style=${{'--c':c,left:pc(x0,an.w),top:pc(y0,an.h),width:pc(x1-x0,an.w),height:pc(y1-y0,an.h)}}
+        onPointerDown=${e=>start(e,key,'move')} onKeyDown=${e=>onKey(e,key)}>
+        <span class="ptag">${zh}</span>
+        ${[0,1,2,3].map(i=>html`<i key=${i} class=${'pt pt'+i} onPointerDown=${e=>start(e,key,i)}></i>`)}
+      </div>`;})}
+  </div>`;
+}
+const PART_KEYS=['head','body','armL','armR','legL','legR'];
+const pickParts=seg=>seg?Object.fromEntries(PART_KEYS.map(k=>[k,seg[k].map(Math.round)])):null;
+
 function Cropper({src,an,face,setFace}){
   const wrap=useRef(null);
   const start=(e,mode)=>{
@@ -840,6 +900,9 @@ function App(){
   const [photo,setPhoto]=useState(null);
   const [aiSrc,setAiSrc]=useState(null);
   const [aiBack,setAiBack]=useState(null);
+  // editable part rectangles of the AI front/back views; autoParts keeps the detected ones for 重設
+  const [partsF,setPartsF]=useState(null), [partsB,setPartsB]=useState(null), [editView,setEditView]=useState('front');
+  const autoParts=useRef({front:null,back:null});
   const [srcKind,setSrcKind]=useState('photo');
   const [aiOn,setAiOn]=useState(!!API.base);
   const [code,setCode]=useState(()=>{ try{ return localStorage.getItem('skin-access-code')||''; }catch{ return ''; } });
@@ -851,7 +914,6 @@ function App(){
   const [subject,setSubject]=useState('person');
   const [desc,setDesc]=useState('');
   const [opt,setOpt]=useState({slim:false,sleeves:'short',texture:true,contrast:20,pattern:false,grid:true});
-  const [side,setSide]=useState('front');
   const [hover,setHover]=useState(null);
   const [toast,setToast]=useState(null);
   const [busy,setBusy]=useState(false);
@@ -874,7 +936,7 @@ function App(){
     try{
       const img=await loadImage(dataUrl); const a=analyze(img); const f=detectFace(a);
       setSrc(dataUrl); setAn(a); setFace(f); setOver({}); setIsSample(sample); setFallbackUrl(null);
-      setPhoto(dataUrl); setAiSrc(null); setAiBack(null); setSrcKind('photo');
+      setPhoto(dataUrl); setAiSrc(null); setAiBack(null); setSrcKind('photo'); setPartsF(null); setPartsB(null);
       if(!sample) say(f.auto?'已自動找到臉部，可拖曳黃框微調。':'沒有偵測到明顯的臉，請手動把黃框拖到臉上。');
     }catch{ say('無法讀取這個檔案。請改用 JPG、PNG 或 WebP 圖片。'); }
   },[say]);
@@ -882,7 +944,9 @@ function App(){
     const img=await loadImage(dataUrl); const a=analyze(img);
     if(kind==='ai') a.seg=segmentFigure(a);
     const f=(a.seg&&faceFromSeg(a.seg))||(kind==='ai'&&headBox(a))||detectFace(a);
-    setSrc(dataUrl); setAn(a); setFace(f); setOver({}); setSrcKind(kind);
+    if(kind==='ai'&&!a.seg) a.seg=defaultParts(a,f);
+    const pf=kind==='ai'?pickParts(a.seg):null; autoParts.current.front=pf;
+    setSrc(dataUrl); setAn(a); setFace(f); setOver({}); setSrcKind(kind); setPartsF(pf); setEditView('front');
     return f;
   },[]);
   const readFile=useCallback(file=>{
@@ -914,9 +978,20 @@ function App(){
   const colors=useMemo(()=>{ if(!detected) return null; const c={}; for(const [k] of COLOR_KEYS) c[k]=over[k]||detected[k]; return c; },[detected,over]);
   const aw=opt.slim?3:4;
   const isAi=srcKind==='ai';
-  const back=useMemo(()=>isAi&&aiBack&&an&&face?{an:aiBack.an,f:backFace(an,face,aiBack.an)}:null,[isAi,aiBack,an,face]);
+  // the edited part boxes replace the detected ones; the character mask is kept
+  const anS=useMemo(()=>an&&isAi&&an.seg&&partsF?{...an,seg:{...an.seg,...partsF}}:an,[an,isAi,partsF]);
+  const back=useMemo(()=>{
+    if(!(isAi&&aiBack&&an&&face)) return null;
+    const B=aiBack.an.seg&&partsB?{...aiBack.an,seg:{...aiBack.an.seg,...partsB}}:aiBack.an;
+    return {an:B,f:backFace(an,face,aiBack.an)};
+  },[isAi,aiBack,an,face,partsB]);
+  // the head box drives the face texture
+  useEffect(()=>{
+    if(!isAi||!partsF) return; const [x0,y0,x1,y1]=partsF.head;
+    setFace(f=>f&&f.x===x0&&f.y===y0&&f.s===x1-x0&&(f.h||f.s)===y1-y0?f:{x:x0,y:y0,s:x1-x0,h:y1-y0,auto:true});
+  },[isAi,partsF]);
   // In AI mode the image model already drew the chosen style, so the local style effects are skipped
-  const skin=useMemo(()=>an&&face&&colors?buildSkin(an,face,colors,{...opt,sampleBody:isAi},isAi?'classic':style,back):null,[an,face,colors,opt,style,isAi,back]);
+  const skin=useMemo(()=>an&&face&&colors?buildSkin(anS,face,colors,{...opt,sampleBody:isAi},isAi?'classic':style,back):null,[anS,face,colors,opt,style,isAi,back]);
   const thumbs=useMemo(()=>an&&face&&colors?Object.fromEntries(STYLES.map(([id])=>[id,buildSkin(an,face,colors,opt,id)])):{},[an,face,colors,opt]);
 
   useEffect(()=>{
@@ -1021,7 +1096,8 @@ function App(){
       if(!res.ok||!j.image) throw new Error(j.error||`伺服器回應 ${res.status}`);
       const sheet=await splitSheet(`data:${j.mime||'image/png'};base64,${j.image}`);
       const backAn=sheet.back?analyze(await loadImage(sheet.back)):null;
-      if(backAn) backAn.seg=segmentFigure(backAn);
+      if(backAn) backAn.seg=segmentFigure(backAn)||defaultParts(backAn,headBox(backAn));
+      const pb=backAn?pickParts(backAn.seg):null; autoParts.current.back=pb; setPartsB(pb);
       setAiBack(backAn?{url:sheet.back,an:backAn}:null);
       setAiSrc(sheet.front);
       const f=await loadSource(sheet.front,'ai');
@@ -1124,7 +1200,17 @@ function App(){
             <div class=${'drop p-3 '+(drag?'on':'')}
               onDragOver=${e=>{e.preventDefault();setDrag(true);}} onDragLeave=${()=>setDrag(false)}
               onDrop=${e=>{e.preventDefault();setDrag(false);readFile(e.dataTransfer.files[0]);}}>
-              ${an&&face&&html`<${Cropper} src=${src} an=${an} face=${face} setFace=${setFace} />`}
+              ${an&&face&&isAi&&partsF?html`<div class="flex flex-col gap-2">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  ${aiBack&&partsB?html`<${Seg} label="編輯哪一面" value=${editView} onChange=${setEditView} options=${[['front','正面圖'],['back','背面圖']]} />`:html`<span></span>`}
+                  <button type="button" class="btn btn-ghost text-sm" onClick=${()=>{setPartsF(autoParts.current.front);setPartsB(autoParts.current.back);}}>重設部位框</button>
+                </div>
+                ${editView==='back'&&aiBack&&partsB
+                  ?html`<${PartsEditor} src=${aiBack.url} an=${aiBack.an} parts=${partsB} setParts=${setPartsB} />`
+                  :html`<${PartsEditor} src=${src} an=${an} parts=${partsF} setParts=${setPartsF} />`}
+                <p class="text-xs muted">拖曳框可移動，拖曳四角圓點可調整邊界；皮膚會立刻跟著更新。框選到角色以外的背景不會被取樣。</p>
+              </div>`
+              :an&&face&&html`<${Cropper} src=${src} an=${an} face=${face} setFace=${setFace} />`}
               <div class="flex flex-wrap items-center justify-between gap-3 mt-3">
                 <p class="text-sm muted min-w-0">${isSample?'目前是範例角色。拖放照片到這裡、貼上，或':'拖曳黃框對準臉部，右下角可縮放。'}</p>
                 <div class="flex gap-2">
@@ -1208,10 +1294,14 @@ function App(){
 
         <div ref=${resultRef} class="flex flex-col gap-4 min-w-0" style=${{scrollMarginTop:'72px'}}>
           <div class="flex flex-wrap items-center justify-between gap-3">
-            <div class="label">角色預覽</div>
-            <${Seg} label="預覽方向" value=${side} onChange=${setSide} options=${[['front','正面'],['back','背面']]} />
+            <div class="label">角色預覽 <small>正面 · 側面 · 背面</small></div>
           </div>
-          ${skin&&html`<div class="checker rounded-2xl flex items-center justify-center py-8"><${Doll} img=${skin} aw=${aw} side=${side} w=${120} /></div>`}
+          ${skin&&html`<div class="checker rounded-2xl grid grid-cols-3 gap-2 py-6 px-2">
+            ${[['front','正面'],['right','側面'],['back','背面']].map(([v,zh])=>html`<figure key=${v} class="flex flex-col items-center gap-2 min-w-0">
+              <${Doll} img=${skin} aw=${aw} side=${v} w=${80} />
+              <figcaption class="text-xs muted">${zh}</figcaption>
+            </figure>`)}
+          </div>`}
 
           ${reviewOk&&html`<div class="sub p-4 flex flex-col gap-2" aria-live="polite">
             <div class="flex items-center justify-between gap-3">

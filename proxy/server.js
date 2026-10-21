@@ -5,6 +5,7 @@ import http from 'node:http';
 const PORT = process.env.PORT || 8080;
 const MODEL = process.env.MODEL || 'gemini-3.1-flash-image';
 const REVIEW_MODEL = process.env.REVIEW_MODEL || 'gemini-2.5-flash';
+const LOCATE_MODEL = process.env.LOCATE_MODEL || 'gemini-2.5-flash';
 const API_KEY = process.env.GEMINI_API_KEY || '';
 const LOCATION = process.env.VERTEX_LOCATION || 'global';
 const ORIGINS = (process.env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -25,33 +26,54 @@ const STYLE_TEXT = {
   hero: 'pixel superhero: bright saturated outfit, gold chest emblem and belt, red boots',
 };
 
-function buildPrompt(style, desc, fix) {
+// subject 'animal': a pet photo becomes an upright blocky humanoid covered in its own fur
+const ANIMAL_CLASSIC = "no clothes: the whole body shows only the animal's own fur colors and markings";
+
+function buildPrompt(style, desc, fix, subject) {
+  const animal = subject === 'animal';
+  const styleText = animal && (style === 'classic' || !STYLE_TEXT[style]) ? ANIMAL_CLASSIC : (STYLE_TEXT[style] || STYLE_TEXT.classic);
   return [
-    'Turn the person in this photo into one Minecraft player character and draw a character reference sheet with exactly two full-body views of that same character side by side:',
+    animal
+      ? 'Turn the animal in this photo into one Minecraft player character (an upright blocky humanoid standing on two legs) and draw a character reference sheet with exactly two full-body views of that same character side by side:'
+      : 'Turn the person in this photo into one Minecraft player character and draw a character reference sheet with exactly two full-body views of that same character side by side:',
     'LEFT half: FRONT view, facing the camera. RIGHT half: BACK view, seen from directly behind. Same size and same height in both views, feet on the same baseline, each figure centered in its half, nothing else on the canvas.',
     'In both views the character stands straight with arms straight down at the sides and legs together, full body from the top of the head to the feet visible.',
-    'If the photo is taken at an angle, in profile, from above or below, or shows only part of the body, rotate the person to face the camera directly, reconstruct the hidden side of the face symmetrically, and invent the missing body parts to match their outfit.',
-    'The photo never shows the back, so invent a back view that matches: the back of the hairstyle, the back of the same clothes, the back of the shoes.',
+    animal
+      ? 'Whatever pose the animal is in, draw the character facing the camera directly, and invent any fur pattern the photo does not show so it matches the visible markings.'
+      : 'If the photo is taken at an angle, in profile, from above or below, or shows only part of the body, rotate the person to face the camera directly, reconstruct the hidden side of the face symmetrically, and invent the missing body parts to match their outfit.',
+    animal
+      ? 'The photo may not show the back, so invent a back view that matches: the back of the head with the ears, and the fur colors and markings of the back.'
+      : 'The photo never shows the back, so invent a back view that matches: the back of the hairstyle, the back of the same clothes, the back of the shoes.',
     'Exact Minecraft proportions: a cube head, a rectangular torso, straight block arms and legs (head 8, torso 12, legs 12 units tall).',
     'Flat pixel-art texture with clearly visible square pixels, no anti-aliasing, no outlines, no text, no logo.',
-    'Keep the person recognizable on the front of the cube head: hairstyle and hair color, skin tone, eye color, glasses or facial hair if present. Keep their clothing colors on the torso, arms and legs.',
-    `Style: ${STYLE_TEXT[style] || STYLE_TEXT.classic}.`,
+    animal
+      ? 'Keep the animal recognizable: its face (eye color, nose, muzzle, whisker marks) on the front of the cube head, its ears painted flat as pixels inside the head cube (nothing sticking out of the cubes), and its exact fur colors and markings on the torso, arms and legs, with paws at the ends of the arms and legs.'
+      : 'Keep the person recognizable on the front of the cube head: hairstyle and hair color, skin tone, eye color, glasses or facial hair if present. Keep their clothing colors on the torso, arms and legs.',
+    `Style: ${styleText}.`,
     desc ? `Extra request from the user: ${desc}` : '',
     fix ? `A quality check of the previous attempt asked for this correction: ${fix}` : '',
-    'Plain flat light grey background (#d9d9d9), no shadow, no scenery, no labels, landscape 3:2 canvas.',
+    // Animals are often grey or white, so they get a background colour no fur has
+    animal
+      ? 'Plain flat magenta background (#ff00ff), no shadow, no scenery, no labels, landscape 3:2 canvas.'
+      : 'Plain flat light grey background (#d9d9d9), no shadow, no scenery, no labels, landscape 3:2 canvas.',
   ].filter(Boolean).join('\n');
 }
 
 // Kept in sync with reviewPrompt() in src/page.html
-function reviewPrompt(colors, isAi, hasPhoto, style) {
+function reviewPrompt(colors, isAi, hasPhoto, style, subject) {
+  const animal = subject === 'animal';
   return [
     'You are the quality checker for an automatic Minecraft skin generator.',
-    `Image 1: the source picture the skin was sampled from${isAi ? ' (an AI-drawn Minecraft-style figure)' : " (the user's photo)"}. The yellow square marks where the 8x8 face texture was sampled; it should tightly cover the character's face from the top of the forehead (including a hair fringe) to the chin, centered on the face.`,
+    animal
+      ? `Image 1: the source picture the skin was sampled from${isAi ? ' (an AI-drawn Minecraft-style figure based on an animal)' : " (the user's photo)"}. The yellow box marks where the 8x8 face texture was sampled; it should cover the front of the character's cube head, ears included.`
+      : `Image 1: the source picture the skin was sampled from${isAi ? ' (an AI-drawn Minecraft-style figure)' : " (the user's photo)"}. The yellow square marks where the 8x8 face texture was sampled; it should tightly cover the character's face from the top of the forehead (including a hair fringe) to the chin, centered on the face.`,
     'Image 2: the generated result on a grey background: front view, back view, and the raw 64x64 skin texture.',
-    hasPhoto ? "Image 3: the person's original photo, for identity reference." : '',
+    hasPhoto ? `Image 3: the ${animal ? "animal's" : "person's"} original photo, for identity reference.` : '',
     `Selected style: ${style}. Current colors: ${JSON.stringify(colors)}.`,
-    'Check: (1) is the yellow square on the face; (2) are the skin, hair, shirt, pants and shoes colors right compared with the source; (3) is the face readable (eyes visible, not a smear) and does it resemble the person; (4) is image 1 a clean front-facing figure (not turned to the side, not in profile, not cropped).',
-    'Reply with only JSON: {"score": integer 1-10, "issues": [up to 5 short sentences in Traditional Chinese], "face_box": [ymin, xmin, ymax, xmax] of the face in image 1 on a 0-1000 scale, "colors": {only the keys among skin, hair, shirt, pants, shoes whose color is clearly wrong, as "#rrggbb"}, "regenerate": true only if image 1 itself is unusable (angled or profile view, cropped, wrong proportions, face unrecognizable), "regenerate_hint": "short English instruction for the image model to fix it, or empty"}',
+    animal
+      ? 'Check: (1) is the yellow box on the head; (2) do the fur colors and markings in the skin match the source; (3) is the face readable (eyes visible, not a smear) and does it resemble the animal; (4) is image 1 a clean front-facing blocky figure (not turned to the side, not cropped, not a pasted photo).'
+      : 'Check: (1) is the yellow square on the face; (2) are the skin, hair, shirt, pants and shoes colors right compared with the source; (3) is the face readable (eyes visible, not a smear) and does it resemble the person; (4) is image 1 a clean front-facing figure (not turned to the side, not in profile, not cropped).',
+    `Reply with only JSON: {"score": integer 1-10, "issues": [up to 5 short sentences in Traditional Chinese], "face_box": [ymin, xmin, ymax, xmax] of the ${animal ? 'head front' : 'face'} in image 1 on a 0-1000 scale, "colors": ${animal ? '{} (always empty for animals)' : '{only the keys among skin, hair, shirt, pants, shoes whose color is clearly wrong, as "#rrggbb"}'}, "regenerate": true only if image 1 itself is unusable (angled or profile view, cropped, wrong proportions, face unrecognizable${animal ? ', a pasted photo instead of pixel art' : ''}), "regenerate_hint": "short English instruction for the image model to fix it, or empty"}`,
   ].filter(Boolean).join('\n');
 }
 
@@ -91,7 +113,7 @@ async function gemini(model, body) {
 
 async function review(body) {
   const parts = [
-    { text: reviewPrompt(body.colors || {}, !!body.ai, !!body.photo, String(body.style || 'classic')) },
+    { text: reviewPrompt(body.colors || {}, !!body.ai, !!body.photo, String(body.style || 'classic'), body.subject === 'animal' ? 'animal' : 'person') },
     { inline_data: { mime_type: 'image/jpeg', data: body.source } },
     { inline_data: { mime_type: 'image/png', data: body.result } },
   ];
@@ -103,6 +125,29 @@ async function review(body) {
   const text = (j.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
   try { return JSON.parse(text); }
   catch { console.error('review not json', text.slice(0, 300)); throw Object.assign(new Error('審查結果格式不正確，請再試一次。'), { status: 502 }); }
+}
+
+// Bounding box of the photo's subject, so the page can crop busy backgrounds away before stylizing.
+// Box only: on Vertex AI, Gemini's segmentation masks come back as undecodable <seg_N> tokens.
+async function locate(image, mime, subject) {
+  const what = subject === 'animal'
+    ? 'the main animal (the whole animal, including tail, ears and paws)'
+    : 'the main person (everything of them that is visible, including hair)';
+  const j = await gemini(LOCATE_MODEL, {
+    contents: [{ role: 'user', parts: [
+      { inline_data: { mime_type: mime, data: image } },
+      { text: `Find ${what} in this image. Reply with only JSON: {"box_2d": [ymin, xmin, ymax, xmax] on a 0-1000 scale, or null if there is none}` },
+    ] }],
+    generationConfig: {
+      responseMimeType: 'application/json', temperature: 0,
+      ...(/flash/.test(LOCATE_MODEL) ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+    },
+  });
+  const text = (j.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
+  let b = null;
+  try { const r = JSON.parse(text); b = (Array.isArray(r) ? r[0] : r)?.box_2d; } catch { console.error('locate not json', text.slice(0, 300)); }
+  const ok = Array.isArray(b) && b.length === 4 && b.every(v => Number.isFinite(v) && v >= 0 && v <= 1000) && b[2] > b[0] && b[3] > b[1];
+  return { box: ok ? b.map(Math.round) : null };
 }
 
 async function stylize(body) {
@@ -140,7 +185,7 @@ http.createServer(async (req, res) => {
     return res.end();
   }
   if (req.method === 'GET' && req.url === '/api/health') return send(res, 200, { ok: true, model: MODEL, auth: API_KEY ? 'gemini-api' : 'vertex' }, origin);
-  if (req.method !== 'POST' || !['/api/stylize', '/api/review'].includes(req.url)) return send(res, 404, { error: 'not found' }, origin);
+  if (req.method !== 'POST' || !['/api/stylize', '/api/review', '/api/locate'].includes(req.url)) return send(res, 404, { error: 'not found' }, origin);
   if (ORIGINS.length && !origin) return send(res, 403, { error: '這個網站沒有使用權限。' }, '');
   if (ACCESS_CODE && req.headers['x-access-code'] !== ACCESS_CODE) return send(res, 401, { error: '存取碼不正確。' }, origin);
 
@@ -156,13 +201,14 @@ http.createServer(async (req, res) => {
       if (body.photo != null && typeof body.photo !== 'string') return send(res, 400, { error: '照片格式不正確。' }, origin);
       return send(res, 200, await review(body), origin);
     }
-    const { image, mime = 'image/jpeg', style = 'classic', desc = '', fix = '' } = body;
+    const { image, mime = 'image/jpeg', style = 'classic', desc = '', fix = '', subject = 'person' } = body;
     if (typeof image !== 'string' || !image) return send(res, 400, { error: '缺少圖片。' }, origin);
     if (!/^image\/(jpeg|png|webp)$/.test(mime)) return send(res, 400, { error: '只接受 JPG、PNG、WebP。' }, origin);
+    if (req.url === '/api/locate') return send(res, 200, await locate(image, mime, subject === 'animal' ? 'animal' : 'person'), origin);
 
     const out = await stylize({
       contents: [{ role: 'user', parts: [
-        { text: buildPrompt(String(style), String(desc).slice(0, 300), String(fix).slice(0, 300)) },
+        { text: buildPrompt(String(style), String(desc).slice(0, 300), String(fix).slice(0, 300), subject === 'animal' ? 'animal' : 'person') },
         { inline_data: { mime_type: mime, data: image } },
       ] }],
       generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: '3:2' } },

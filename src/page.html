@@ -359,9 +359,11 @@ function buildSkin(an,f,col0,o,styleId,back){
   const aw=o.slim?3:4;
 
   // HEAD — front face comes straight from the cropped photo
-  const H=box(0,0,8,8,8), kc=1+o.contrast/100, cell=f.s/8;
+  // f.h: a non-square head (an animal's head with ears) is squeezed into the 8×8 face
+  const H=box(0,0,8,8,8), kc=1+o.contrast/100, cell=f.s/8, cellY=(f.h||f.s)/8;
+  const segFace=o.sampleBody&&an.seg?sampleRect(an,[f.x,f.y,f.x+f.s,f.y+(f.h||f.s)],8,8):null;
   fill(H.front,(px,py)=>{
-    const c=avgBox(an,f.x+px*cell,f.y+py*cell,f.x+(px+1)*cell,f.y+(py+1)*cell);
+    const c=segFace?[...segFace(px,py),255]:avgBox(an,f.x+px*cell,f.y+py*cellY,f.x+(px+1)*cell,f.y+(py+1)*cellY);
     let rgb=c[3]<128?one(col.skin):c.slice(0,3).map(v=>(v-128)*kc+128);
     if(st.face) rgb=st.face(rgb);
     return [rgb,0,false];
@@ -419,7 +421,8 @@ function buildSkin(an,f,col0,o,styleId,back){
       return [v[3]<128?one(fb):v.slice(0,3),0,false];
     };
     const limbs=(A,g,side)=>{
-      const s=g.s, a=s*aw/8, t=g.y+s, l=g.y+2.5*s, h=1.5*s;
+      // The image model rarely keeps the exact 12:12 torso:legs ratio, so split the measured body height in half
+      const s=g.s, a=s*aw/8, t=g.y+s, fb=figureBounds(A), h=fb&&fb.bottom>t+s?(fb.bottom+1-t)/2:1.5*s, l=t+h;
       // front view: character's right arm/leg on the viewer's left; back view: the opposite
       const R=side==='front', F=side;
       fill(box(16,16,8,12,4)[F],grid(A,g.x,t,s,h,8,12,col.shirt));
@@ -428,8 +431,25 @@ function buildSkin(an,f,col0,o,styleId,back){
       fill(box(0,16,4,12,4)[F],grid(A,R?g.x:g.x+s/2,l,s/2,h,4,12,col.pants));
       fill(box(16,48,4,12,4)[F],grid(A,R?g.x+s/2:g.x,l,s/2,h,4,12,col.pants));
     };
-    limbs(an,f,'front');
-    if(back){
+    // Segmented figure: each part is sampled from its own measured rectangle
+    const segFill=(F,A,r,cols,rows,fb)=>{ const g=sampleRect(A,r,cols,rows); fill(F,(px,py)=>[g?g(px,py):one(fb),0,false]); };
+    if(an.seg){
+      const s=an.seg;
+      segFill(box(16,16,8,12,4).front,an,s.body,8,12,col.shirt);
+      segFill(box(40,16,aw,12,4).front,an,s.armL,aw,12,col.shirt);
+      segFill(box(32,48,aw,12,4).front,an,s.armR,aw,12,col.shirt);
+      segFill(box(0,16,4,12,4).front,an,s.legL,4,12,col.pants);
+      segFill(box(16,48,4,12,4).front,an,s.legR,4,12,col.pants);
+    }else limbs(an,f,'front');
+    if(back&&back.an.seg){
+      const s=back.an.seg;
+      segFill(box(0,0,8,8,8).back,back.an,s.head,8,8,col.hair);
+      segFill(box(16,16,8,12,4).back,back.an,s.body,8,12,col.shirt);
+      segFill(box(40,16,aw,12,4).back,back.an,s.armR,aw,12,col.shirt);
+      segFill(box(32,48,aw,12,4).back,back.an,s.armL,aw,12,col.shirt);
+      segFill(box(0,16,4,12,4).back,back.an,s.legR,4,12,col.pants);
+      segFill(box(16,48,4,12,4).back,back.an,s.legL,4,12,col.pants);
+    }else if(back){
       fill(box(0,0,8,8,8).back,grid(back.an,back.f.x,back.f.y,back.f.s,back.f.s,8,8,col.hair));
       limbs(back.an,back.f,'back');
     }
@@ -479,9 +499,9 @@ async function splitSheet(url){
 // Horizontal centre and top of the figure, found by comparing pixels with the corner background
 function figureBounds(an){
   const bg=[0,1,2].map(i=>an.d[i]), fg=(x,y)=>{ const i=(y*an.w+x)*4; return Math.abs(an.d[i]-bg[0])+Math.abs(an.d[i+1]-bg[1])+Math.abs(an.d[i+2]-bg[2])>60; };
-  let x0=an.w,x1=-1,top=an.h;
-  for(let y=0;y<an.h;y+=2)for(let x=0;x<an.w;x+=2) if(fg(x,y)){ if(x<x0)x0=x; if(x>x1)x1=x; if(y<top)top=y; }
-  return x1<0?null:{cx:(x0+x1)/2,top};
+  let x0=an.w,x1=-1,top=an.h,bottom=-1;
+  for(let y=0;y<an.h;y+=2)for(let x=0;x<an.w;x+=2) if(fg(x,y)){ if(x<x0)x0=x; if(x>x1)x1=x; if(y<top)top=y; if(y>bottom)bottom=y; }
+  return x1<0?null:{cx:(x0+x1)/2,top,bottom};
 }
 // Exact head cube of a blocky AI figure: the topmost foreground rows, measured on a few rows below the top
 function headBox(an){
@@ -497,8 +517,118 @@ function headBox(an){
   if(s<an.w*.08||s>an.w*.9||b.top+s>an.h) return null;
   return {x:x0,y:b.top,s,auto:true};
 }
+// Character mask of an AI figure: pixels unlike the corner background. Background-coloured blobs the
+// figure encloses stay character (eyes, markings) unless they are thin slits (gap between arm and body or legs).
+function figureMask(an){
+  const {w,h,d}=an, n=w*h;
+  const med4=a=>{a.sort((p,q)=>p-q);return (a[1]+a[2])/2;};
+  const cs=[0,w-1,(h-1)*w,n-1].map(p=>p*4), bg=[0,1,2].map(k=>med4(cs.map(i=>d[i+k])));
+  // On a coloured backdrop (magenta, green) a darker shade of it is a drop shadow, so it counts as background
+  // too; not on grey, where grey fur or clothes would vanish.
+  const chroma=Math.max(...bg)-Math.min(...bg)>60, bb=bg[0]*bg[0]+bg[1]*bg[1]+bg[2]*bg[2];
+  const like=new Uint8Array(n);
+  for(let p=0;p<n;p++){
+    const i=p*4, r=d[i], g=d[i+1], b=d[i+2];
+    let near=Math.abs(r-bg[0])+Math.abs(g-bg[1])+Math.abs(b-bg[2])<=60;
+    if(!near&&chroma){
+      const t=(r*bg[0]+g*bg[1]+b*bg[2])/bb;
+      near=t>.35&&t<1.1&&Math.abs(r-t*bg[0])+Math.abs(g-t*bg[1])+Math.abs(b-t*bg[2])<=45;
+    }
+    like[p]=near?1:0;
+  }
+  const mask=new Uint8Array(n).fill(1), seen=new Uint8Array(n), stack=new Int32Array(n), comp=[];
+  for(let s=0;s<n;s++){
+    if(!like[s]||seen[s]) continue;
+    let top=0,minx=w,maxx=-1,miny=h,maxy=-1; stack[top++]=s; seen[s]=1; comp.length=0;
+    while(top){
+      const p=stack[--top], x=p%w, y=(p/w)|0; comp.push(p);
+      if(x<minx)minx=x; if(x>maxx)maxx=x; if(y<miny)miny=y; if(y>maxy)maxy=y;
+      if(x>0&&like[p-1]&&!seen[p-1]){seen[p-1]=1;stack[top++]=p-1;}
+      if(x<w-1&&like[p+1]&&!seen[p+1]){seen[p+1]=1;stack[top++]=p+1;}
+      if(y>0&&like[p-w]&&!seen[p-w]){seen[p-w]=1;stack[top++]=p-w;}
+      if(y<h-1&&like[p+w]&&!seen[p+w]){seen[p+w]=1;stack[top++]=p+w;}
+    }
+    const bw=maxx-minx+1, bh=maxy-miny+1;
+    if(minx===0||miny===0||maxx===w-1||maxy===h-1||bh>3*bw||bw>3*bh) for(const p of comp) mask[p]=0;
+  }
+  // drop the 1px anti-aliased rim, which is half background colour
+  const out=mask.slice();
+  for(let p=0;p<n;p++){
+    if(!mask[p]) continue; const x=p%w;
+    if((x>0&&!mask[p-1])||(x<w-1&&!mask[p+1])||(p>=w&&!mask[p-w])||(p<n-w&&!mask[p+w])) out[p]=0;
+  }
+  return out;
+}
+// Part rectangles [x0,y0,x1,y1] of a blocky AI figure from its silhouette, so drawn proportions don't
+// have to be exact: the arms are the widest rows, the head sits above them (ears may stick up), legs below.
+// armL/legL are on the viewer's left. Returns null when the silhouette doesn't look like a figure.
+function segmentFigure(an){
+  const {w,h}=an, m=figureMask(an), L=new Int32Array(h).fill(-1), R=new Int32Array(h).fill(-1);
+  let y0=-1,y1=-1;
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++) if(m[y*w+x]){ if(L[y]<0)L[y]=x; R[y]=x+1; if(y0<0)y0=y; y1=y+1; }
+  if(y0<0) return null;
+  const W=y=>L[y]<0?0:R[y]-L[y];
+  let maxW=0; for(let y=y0;y<y1;y++) maxW=Math.max(maxW,W(y));
+  let armTop=-1,armBot=-1; for(let y=y0;y<y1;y++) if(W(y)>maxW*.85){ if(armTop<0)armTop=y; armBot=y+1; }
+  if(armTop-y0<(y1-y0)*.1) return null;
+  const med=a=>a.sort((p,q)=>p-q)[a.length>>1], lx=[], rx=[];
+  for(let y=Math.round(y0+(armTop-y0)*.4);y<armTop;y++) if(L[y]>=0){ lx.push(L[y]); rx.push(R[y]); }
+  if(!lx.length) return null;
+  const hx0=med(lx), hx1=med(rx);
+  let ax0=w,ax1=0; for(let y=armTop;y<armBot;y++){ ax0=Math.min(ax0,L[y]); ax1=Math.max(ax1,R[y]); }
+  if(hx0-ax0<2||ax1-hx1<2) return null;
+  let legBot=armBot;
+  for(let y=armBot;y<h;y++) for(let x=hx0;x<hx1;x++) if(m[y*w+x]){ legBot=y+1; break; }
+  if(legBot-armBot<(armBot-armTop)*.4) return null;
+  // legs split at the emptiest column of the middle third (the gap between them)
+  const bw=hx1-hx0; let split=hx0+(bw>>1), best=Infinity;
+  for(let x=hx0+Math.round(bw/3);x<hx0+Math.round(bw*2/3);x++){
+    let c=0; for(let y=armBot;y<legBot;y++) c+=m[y*w+x];
+    if(c<best){best=c;split=x;}
+  }
+  // shrink to rows/columns that are mostly character, dropping gaps and stray background
+  const tight=(X0,Y0,X1,Y1)=>{
+    const rows=[],cols=[];
+    for(let y=Y0;y<Y1;y++){ let c=0; for(let x=X0;x<X1;x++) c+=m[y*w+x]; if(c>=(X1-X0)*.6) rows.push(y); }
+    for(let x=X0;x<X1;x++){ let c=0; for(let y=Y0;y<Y1;y++) c+=m[y*w+x]; if(c>=(Y1-Y0)*.6) cols.push(x); }
+    return rows.length&&cols.length?[cols[0],rows[0],cols[cols.length-1]+1,rows[rows.length-1]+1]:[X0,Y0,X1,Y1];
+  };
+  return {mask:m, head:[hx0,y0,hx1,armTop], body:tight(hx0,armTop,hx1,armBot),
+    armL:tight(ax0,armTop,hx0,armBot), armR:tight(hx1,armTop,ax1,armBot),
+    legL:tight(hx0,armBot,split,legBot), legR:tight(split,armBot,hx1,legBot)};
+}
+// Face box covering the whole segmented head (h when it isn't square, e.g. with ears)
+function faceFromSeg(seg){
+  const [x0,y0,x1,y1]=seg.head, s=x1-x0;
+  return y1-y0===s?{x:x0,y:y0,s,auto:true}:{x:x0,y:y0,s,h:y1-y0,auto:true};
+}
+// cols×rows texel colours of rect r from only the character pixels of a segmented image. Per-channel
+// median, not mean, so thin stripes and eyes stay crisp. Texels with no character pixels copy their
+// nearest filled neighbour. null if the rect has no character at all.
+function sampleRect(an,r,cols,rows){
+  const [x0,y0,x1,y1]=r, m=an.seg.mask, cw=(x1-x0)/cols, ch=(y1-y0)/rows, out=new Array(cols*rows).fill(null);
+  const med=a=>{a.sort((p,q)=>p-q);return a[a.length>>1];};
+  for(let j=0;j<rows;j++)for(let i=0;i<cols;i++){
+    const R=[],G=[],B=[];
+    const X0=Math.floor(x0+(i+.15)*cw), X1=Math.max(X0+1,Math.ceil(x0+(i+.85)*cw));
+    const Y0=Math.floor(y0+(j+.15)*ch), Y1=Math.max(Y0+1,Math.ceil(y0+(j+.85)*ch));
+    for(let y=clamp(Y0,0,an.h-1);y<clamp(Y1,1,an.h);y++)for(let x=clamp(X0,0,an.w-1);x<clamp(X1,1,an.w);x++){
+      const p=y*an.w+x; if(!m[p]) continue; const q=p*4; R.push(an.d[q]); G.push(an.d[q+1]); B.push(an.d[q+2]);
+    }
+    if(R.length) out[j*cols+i]=[med(R),med(G),med(B)];
+  }
+  const filled=out.map((c,k)=>c?k:-1).filter(k=>k>=0);
+  if(!filled.length) return null;
+  for(let k=0;k<out.length;k++) if(!out[k]){
+    let bk=filled[0],bd=Infinity;
+    for(const f of filled){ const d=(f%cols-k%cols)**2+((f/cols|0)-(k/cols|0))**2; if(d<bd){bd=d;bk=f;} }
+    out[k]=out[bk];
+  }
+  return (px,py)=>out[py*cols+px];
+}
 // Head box in the back view: measured the same way, else the front box moved to the back figure
 function backFace(anF,f,anB){
+  if(anB.seg) return faceFromSeg(anB.seg);
   const h=headBox(anB); if(h) return h;
   const a=figureBounds(anF), b=figureBounds(anB);
   if(!a||!b) return {...f};
@@ -564,7 +694,7 @@ async function scaledCanvas(url,max){
 async function sourceWithBox(url,an,face){
   const c=await scaledCanvas(url,768), k=c.width/an.w, x=c.getContext('2d');
   x.strokeStyle='#ffd02e'; x.lineWidth=Math.max(2,Math.round(c.width/180));
-  x.strokeRect(face.x*k,face.y*k,face.s*k,face.s*k);
+  x.strokeRect(face.x*k,face.y*k,face.s*k,(face.h||face.s)*k);
   return c;
 }
 // Image 2: front + back paper doll and the raw 64×64 texture on neutral grey
@@ -588,15 +718,20 @@ function boxToFace(b,an){
   return {x:clamp((X0+X1)/2-s/2,0,an.w-s),y:clamp((Y0+Y1)/2-s/2,0,an.h-s),s};
 }
 // Kept in sync with reviewPrompt() in proxy/server.js
-function reviewPrompt(colors,isAi,hasPhoto,style){
+function reviewPrompt(colors,isAi,hasPhoto,style,subject){
+  const animal=subject==='animal';
   return [
     'You are the quality checker for an automatic Minecraft skin generator.',
-    `Image 1: the source picture the skin was sampled from${isAi?' (an AI-drawn Minecraft-style figure)':" (the user's photo)"}. The yellow square marks where the 8x8 face texture was sampled; it should tightly cover the character's face from the top of the forehead (including a hair fringe) to the chin, centered on the face.`,
+    animal
+      ?`Image 1: the source picture the skin was sampled from${isAi?' (an AI-drawn Minecraft-style figure based on an animal)':" (the user's photo)"}. The yellow box marks where the 8x8 face texture was sampled; it should cover the front of the character's cube head, ears included.`
+      :`Image 1: the source picture the skin was sampled from${isAi?' (an AI-drawn Minecraft-style figure)':" (the user's photo)"}. The yellow square marks where the 8x8 face texture was sampled; it should tightly cover the character's face from the top of the forehead (including a hair fringe) to the chin, centered on the face.`,
     'Image 2: the generated result on a grey background: front view, back view, and the raw 64x64 skin texture.',
-    hasPhoto?"Image 3: the person's original photo, for identity reference.":'',
+    hasPhoto?`Image 3: the ${animal?"animal's":"person's"} original photo, for identity reference.`:'',
     `Selected style: ${style}. Current colors: ${JSON.stringify(colors)}.`,
-    `Check: (1) is the yellow square on the face; (2) are the skin, hair, shirt, pants and shoes colors right compared with the source; (3) is the face readable (eyes visible, not a smear) and does it resemble the person; (4) is image 1 a clean front-facing figure (not turned to the side, not in profile, not cropped).`,
-    'Reply with only JSON: {"score": integer 1-10, "issues": [up to 5 short sentences in Traditional Chinese], "face_box": [ymin, xmin, ymax, xmax] of the face in image 1 on a 0-1000 scale, "colors": {only the keys among skin, hair, shirt, pants, shoes whose color is clearly wrong, as "#rrggbb"}, "regenerate": true only if image 1 itself is unusable (angled or profile view, cropped, wrong proportions, face unrecognizable), "regenerate_hint": "short English instruction for the image model to fix it, or empty"}',
+    animal
+      ?'Check: (1) is the yellow box on the head; (2) do the fur colors and markings in the skin match the source; (3) is the face readable (eyes visible, not a smear) and does it resemble the animal; (4) is image 1 a clean front-facing blocky figure (not turned to the side, not cropped, not a pasted photo).'
+      :'Check: (1) is the yellow square on the face; (2) are the skin, hair, shirt, pants and shoes colors right compared with the source; (3) is the face readable (eyes visible, not a smear) and does it resemble the person; (4) is image 1 a clean front-facing figure (not turned to the side, not in profile, not cropped).',
+    `Reply with only JSON: {"score": integer 1-10, "issues": [up to 5 short sentences in Traditional Chinese], "face_box": [ymin, xmin, ymax, xmax] of the ${animal?'head front':'face'} in image 1 on a 0-1000 scale, "colors": ${animal?'{} (always empty for animals)':'{only the keys among skin, hair, shirt, pants, shoes whose color is clearly wrong, as "#rrggbb"}'}, "regenerate": true only if image 1 itself is unusable (angled or profile view, cropped, wrong proportions, face unrecognizable${animal?', a pasted photo instead of pixel art':''}), "regenerate_hint": "short English instruction for the image model to fix it, or empty"}`,
   ].filter(Boolean).join('\n');
 }
 
@@ -630,8 +765,7 @@ function Cropper({src,an,face,setFace}){
       const dx=(ev.clientX-s0.px)*k, dy=(ev.clientY-s0.py)*k;
       let {x,y,s}=s0.f;
       if(mode==='move'){x+=dx;y+=dy;} else s=s+Math.max(dx,dy);
-      s=clamp(s,8,Math.min(an.w,an.h)); x=clamp(x,0,an.w-s); y=clamp(y,0,an.h-s);
-      setFace({x,y,s});
+      setFace(fitFace(x,y,s,s0.f));
     };
     const up=()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);};
     window.addEventListener('pointermove',move); window.addEventListener('pointerup',up);
@@ -640,13 +774,20 @@ function Cropper({src,an,face,setFace}){
     const st=e.shiftKey?10:2; let {x,y,s}=face;
     if(e.key==='ArrowLeft')x-=st; else if(e.key==='ArrowRight')x+=st; else if(e.key==='ArrowUp')y-=st; else if(e.key==='ArrowDown')y+=st;
     else if(e.key==='+'||e.key==='=')s+=st; else if(e.key==='-')s-=st; else return;
-    e.preventDefault(); s=clamp(s,8,Math.min(an.w,an.h)); setFace({x:clamp(x,0,an.w-s),y:clamp(y,0,an.h-s),s});
+    e.preventDefault(); setFace(fitFace(x,y,s,face));
   };
+  // keeps a non-square box's aspect ratio (face.h) while moving or resizing, and inside the image
+  function fitFace(x,y,s,f0){
+    const r=(f0.h||f0.s)/f0.s;
+    s=clamp(s,8,Math.min(an.w,an.h/r)); const h=s*r;
+    x=clamp(x,0,an.w-s); y=clamp(y,0,an.h-h);
+    return f0.h?{x,y,s,h}:{x,y,s};
+  }
   return html`<div ref=${wrap} class="relative overflow-hidden rounded-xl select-none mx-auto" style=${{maxWidth:'100%',width:an.w>=an.h?'100%':(an.w/an.h*320)+'px'}}>
     <img src=${src} alt="上傳的照片" class="block w-full h-auto" draggable="false" />
     <div class="cropbox" tabIndex="0" role="slider" aria-label="臉部框：拖曳移動，方向鍵微調，+/- 縮放"
       onPointerDown=${e=>start(e,'move')} onKeyDown=${onKey}
-      style=${{left:face.x/an.w*100+'%',top:face.y/an.h*100+'%',width:face.s/an.w*100+'%',height:face.s/an.h*100+'%'}}>
+      style=${{left:face.x/an.w*100+'%',top:face.y/an.h*100+'%',width:face.s/an.w*100+'%',height:(face.h||face.s)/an.h*100+'%'}}>
       <div class="grid8"></div>
       <span class="tag pixel">FACE</span>
       <div class="handle" onPointerDown=${e=>start(e,'resize')}></div>
@@ -670,6 +811,7 @@ function App(){
   const [face,setFace]=useState(null);
   const [over,setOver]=useState({});
   const [style,setStyle]=useState('classic');
+  const [subject,setSubject]=useState('person');
   const [desc,setDesc]=useState('');
   const [opt,setOpt]=useState({slim:false,sleeves:'short',texture:true,contrast:20,pattern:false,grid:true});
   const [side,setSide]=useState('front');
@@ -700,7 +842,9 @@ function App(){
     }catch{ say('無法讀取這個檔案。請改用 JPG、PNG 或 WebP 圖片。'); }
   },[say]);
   const loadSource=useCallback(async(dataUrl,kind)=>{
-    const img=await loadImage(dataUrl); const a=analyze(img); const f=(kind==='ai'&&headBox(a))||detectFace(a);
+    const img=await loadImage(dataUrl); const a=analyze(img);
+    if(kind==='ai') a.seg=segmentFigure(a);
+    const f=(a.seg&&faceFromSeg(a.seg))||(kind==='ai'&&headBox(a))||detectFace(a);
     setSrc(dataUrl); setAn(a); setFace(f); setOver({}); setSrcKind(kind);
     return f;
   },[]);
@@ -764,7 +908,7 @@ function App(){
         const res=await fetch(API.base.replace(/\/$/,'')+'/api/review',{
           method:'POST',
           headers:{'Content-Type':'application/json',...(code?{'x-access-code':code}:{})},
-          body:JSON.stringify({source:b64(srcCv,'image/jpeg'),result:b64(resCv,'image/png'),photo:photoCv?b64(photoCv,'image/jpeg'):null,colors:hex,ai:isAi,style})
+          body:JSON.stringify({source:b64(srcCv,'image/jpeg'),result:b64(resCv,'image/png'),photo:photoCv?b64(photoCv,'image/jpeg'):null,colors:hex,ai:isAi,style,subject})
         });
         r=await res.json().catch(()=>({}));
         if(!res.ok) throw new Error(r.error||`伺服器回應 ${res.status}`);
@@ -772,12 +916,13 @@ function App(){
         const blob=(c,t)=>new Promise(ok=>c.toBlob(ok,t,.88));
         const images=[await blob(srcCv,'image/jpeg'),await blob(resCv,'image/png')];
         if(photoCv) images.push(await blob(photoCv,'image/jpeg'));
-        r=await caps.current.sample.json(reviewPrompt(hex,isAi,!!photoCv,style),{images});
+        r=await caps.current.sample.json(reviewPrompt(hex,isAi,!!photoCv,style,subject),{images});
       }
       if(!r||typeof r!=='object') throw new Error('審查結果格式不正確');
 
       const fixed=[];
-      const nf=Array.isArray(r.face_box)?boxToFace(r.face_box,an):null;
+      // AI figures already have an exact measured head box; the reviewer's box tends to skip the hair
+      const nf=!isAi&&Array.isArray(r.face_box)?boxToFace(r.face_box,an):null;
       if(nf&&(Math.abs(nf.x-face.x)>face.s*.08||Math.abs(nf.y-face.y)>face.s*.08||Math.abs(nf.s-face.s)>face.s*.12)){ setFace(nf); fixed.push('臉部框位置'); }
       if(r.colors&&typeof r.colors==='object'){
         const o={};
@@ -810,19 +955,37 @@ function App(){
   const runAi=async(fix='')=>{
     setBusy(true);
     try{
-      const img=await loadImage(photo);
-      const k=Math.min(1,1024/Math.max(img.naturalWidth,img.naturalHeight));
-      const c=document.createElement('canvas'); c.width=Math.round(img.naturalWidth*k); c.height=Math.round(img.naturalHeight*k);
-      const x=c.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,c.width,c.height); x.drawImage(img,0,0,c.width,c.height);
-      const res=await fetch(API.base.replace(/\/$/,'')+'/api/stylize',{
-        method:'POST',
-        headers:{'Content-Type':'application/json',...(code?{'x-access-code':code}:{})},
-        body:JSON.stringify({image:c.toDataURL('image/jpeg',.9).split(',')[1],mime:'image/jpeg',style,desc:desc.trim().slice(0,300),fix})
+      const img=await loadImage(photo), W=img.naturalWidth, H=img.naturalHeight;
+      const base=API.base.replace(/\/$/,''), headers={'Content-Type':'application/json',...(code?{'x-access-code':code}:{})};
+      // JPEG of the photo region (sx,sy,sw,sh), at most 1024px on the long side
+      const jpeg=(sx,sy,sw,sh)=>{
+        const k=Math.min(1,1024/Math.max(sw,sh)), c=document.createElement('canvas');
+        c.width=Math.round(sw*k); c.height=Math.round(sh*k);
+        const x=c.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,c.width,c.height); x.drawImage(img,sx,sy,sw,sh,0,0,c.width,c.height);
+        return c.toDataURL('image/jpeg',.9).split(',')[1];
+      };
+      let image=jpeg(0,0,W,H);
+      // Crop to the subject first so a busy background (sofa, grass) doesn't leak into the drawing.
+      // Best effort: if locating fails the whole photo is sent as before.
+      try{
+        const lr=await fetch(base+'/api/locate',{method:'POST',headers,body:JSON.stringify({image,mime:'image/jpeg',subject})});
+        const b=lr.ok?(await lr.json()).box:null;
+        if(Array.isArray(b)){
+          const [y0,x0,y1,x1]=b, pad=.06*Math.max(x1-x0,y1-y0);
+          const X0=clamp((x0-pad)/1000*W,0,W), Y0=clamp((y0-pad)/1000*H,0,H), X1=clamp((x1+pad)/1000*W,0,W), Y1=clamp((y1+pad)/1000*H,0,H);
+          if(X1-X0>W*.1&&Y1-Y0>H*.1) image=jpeg(X0,Y0,X1-X0,Y1-Y0);
+        }
+      }catch{}
+      const res=await fetch(base+'/api/stylize',{
+        method:'POST',headers,
+        body:JSON.stringify({image,mime:'image/jpeg',style,subject,desc:desc.trim().slice(0,300),fix})
       });
       const j=await res.json().catch(()=>({}));
       if(!res.ok||!j.image) throw new Error(j.error||`伺服器回應 ${res.status}`);
       const sheet=await splitSheet(`data:${j.mime||'image/png'};base64,${j.image}`);
-      setAiBack(sheet.back?{url:sheet.back,an:analyze(await loadImage(sheet.back))}:null);
+      const backAn=sheet.back?analyze(await loadImage(sheet.back)):null;
+      if(backAn) backAn.seg=segmentFigure(backAn);
+      setAiBack(backAn?{url:sheet.back,an:backAn}:null);
       setAiSrc(sheet.front);
       const f=await loadSource(sheet.front,'ai');
       if(autoReview&&reviewOk) setReviewTick(t=>t+1);
@@ -941,6 +1104,9 @@ function App(){
               <span class="label">AI 轉換 <small>Nano Banana 先把照片畫成 Minecraft 角色</small></span>
               <input id="ai" type="checkbox" class="w-5 h-5 shrink-0" checked=${aiOn} onChange=${e=>setAiOn(e.target.checked)} style=${{accentColor:'var(--accent-strong)'}} />
             </label>
+            ${aiOn&&html`<div class="flex flex-wrap items-center gap-3"><span class="text-sm muted">照片主體</span>
+              <${Seg} label="照片主體" value=${subject} onChange=${setSubject} options=${[['person','人物'],['animal','動物（寵物）']]} /></div>`}
+            ${aiOn&&subject==='animal'&&html`<p class="text-xs muted">動物會畫成用兩腳站立的方塊角色，全身保留牠的毛色與花紋。</p>`}
             ${aiOn&&API.needsCode&&html`<input id="code" type="text" autocomplete="off" placeholder="輸入存取碼" value=${code}
               onInput=${e=>{setCode(e.target.value);try{localStorage.setItem('skin-access-code',e.target.value);}catch{}}} />`}
             ${isAi&&aiBack&&html`<div class="flex items-center gap-3">

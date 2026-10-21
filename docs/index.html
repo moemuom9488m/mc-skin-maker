@@ -12,7 +12,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/htm@3.1.1/dist/htm.umd.js"></script>
 <style>
-/* Layout: AI-tool landing page — nav, centered hero, one big generator card (settings left, before/after right), then steps, features, examples, FAQ */
+/* Layout: AI-tool landing page — nav, centered hero, one big generator card (settings left, preview right), then steps, features, FAQ */
 :root{
   --bg:#ffffff; --soft:#fffbe6; --panel:#ffffff; --panel-2:#f7f7f9; --ink:#16171b; --muted:#5e6270; --line:#e9e9ef;
   --accent:#ffd02e; --accent-strong:#f2b705; --accent-ink:#1c1a10; --accent-soft:#fff3c2;
@@ -569,7 +569,6 @@ function App(){
   const [drag,setDrag]=useState(false);
   const [theme,setTheme]=useState(0);
   const [aiOk,setAiOk]=useState(true);
-  const [sampleDemo,setSampleDemo]=useState(null);
   const sheetCv=useRef(null), skinCv=useRef(null), fileIn=useRef(null), resultRef=useRef(null);
   const caps=useRef({});
 
@@ -580,8 +579,7 @@ function App(){
       const img=await loadImage(dataUrl); const a=analyze(img); const f=detectFace(a);
       setSrc(dataUrl); setAn(a); setFace(f); setOver({}); setIsSample(sample); setFallbackUrl(null);
       setPhoto(dataUrl); setAiSrc(null); setSrcKind('photo');
-      if(sample) setSampleDemo({src:dataUrl,an:a,face:f});
-      else say(f.auto?'已自動找到臉部，可拖曳黃框微調。':'沒有偵測到明顯的臉，請手動把黃框拖到臉上。');
+      if(!sample) say(f.auto?'已自動找到臉部，可拖曳黃框微調。':'沒有偵測到明顯的臉，請手動把黃框拖到臉上。');
     }catch{ say('無法讀取這個檔案。請改用 JPG、PNG 或 WebP 圖片。'); }
   },[say]);
   const loadSource=useCallback(async(dataUrl,kind)=>{
@@ -617,11 +615,6 @@ function App(){
   const aw=opt.slim?3:4;
   const skin=useMemo(()=>an&&face&&colors?buildSkin(an,face,colors,opt,style):null,[an,face,colors,opt,style]);
   const thumbs=useMemo(()=>an&&face&&colors?Object.fromEntries(STYLES.map(([id])=>[id,buildSkin(an,face,colors,opt,id)])):{},[an,face,colors,opt]);
-  const demo=useMemo(()=>{
-    if(!sampleDemo) return null; const c=detectColors(sampleDemo.an,sampleDemo.face);
-    const o={slim:false,sleeves:'short',texture:true,contrast:20,pattern:false};
-    return ['classic','diamond','zombie','knight'].map(id=>({id,img:buildSkin(sampleDemo.an,sampleDemo.face,c,o,id)}));
-  },[sampleDemo]);
 
   useEffect(()=>{
     if(!skin) return;
@@ -727,7 +720,7 @@ function App(){
         </a>
         <nav class="hidden md:flex items-center gap-6 text-sm muted">
           <a href="#generator" class="hover:underline">生成器</a><a href="#how" class="hover:underline">使用方法</a>
-          <a href="#features" class="hover:underline">特色</a><a href="#examples" class="hover:underline">範例</a><a href="#faq" class="hover:underline">常見問題</a>
+          <a href="#features" class="hover:underline">特色</a><a href="#faq" class="hover:underline">常見問題</a>
         </nav>
         <a href="#generator" class="btn btn-dark text-sm">免費開始</a>
       </div>
@@ -880,25 +873,11 @@ function App(){
              ['0010000100111110111000100','透明底 PNG','第二層與未使用區域保持透明，Java 版與基岩版都能直接匯入。']]
             .map(([ic,t,d])=>html`<div key=${t} class="card p-6 flex flex-col gap-3">
               <${PixelIcon} cells=${ic} /><h3 class="font-bold">${t}</h3><p class="muted text-sm">${d}</p>
-              <a href="#examples" class="text-sm font-bold mt-auto" style=${{color:'var(--ink)'}}>查看範例 →</a>
             </div>`)}
         </div>
       </div>
     </section>
 
-    <section id="examples" class="wrap" style=${{paddingBlock:'64px 24px',scrollMarginTop:'72px'}}>
-      <h2 class="text-center font-black text-2xl sm:text-3xl">之前與之後</h2>
-      <p class="text-center muted mt-2">以範例角色示範四種風格的實際輸出。</p>
-      <div class="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 mt-8">
-        ${demo&&sampleDemo&&demo.map(({id,img})=>{ const s=STYLES.find(x=>x[0]===id); return html`<div key=${id} class="card p-4">
-          <div class="grid grid-cols-2 gap-2 items-center">
-            <img src=${sampleDemo.src} alt="範例角色原圖" class="rounded-lg w-full h-auto" />
-            <div class="checker rounded-lg flex items-center justify-center h-full py-3"><${Doll} img=${img} aw=${4} w=${48} /></div>
-          </div>
-          <div class="mt-3 flex items-center justify-between gap-2"><span class="font-bold text-sm">${s[2]}</span><span class="text-xs muted">${s[1]}</span></div>
-        </div>`;})}
-      </div>
-    </section>
 
     <section id="faq" class="wrap" style=${{paddingBlock:'48px 72px',maxWidth:'820px',scrollMarginTop:'72px'}}>
       <h2 class="text-center font-black text-2xl sm:text-3xl mb-6">常見問題解答</h2>

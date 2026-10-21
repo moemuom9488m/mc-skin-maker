@@ -45,4 +45,4 @@ gcloud run deploy mc-skin-proxy --source . --region asia-east1 --allow-unauthent
 
 部署完成後，把顯示的網址填進 `docs/config.js` 的 `base`，commit 並 push，網頁就會出現「AI 轉換」選項。
 
-檢查服務：`curl https://<網址>/healthz`
+檢查服務：`curl https://<網址>/api/health`（Cloud Run 保留了 `/healthz`，不能用）

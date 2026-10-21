@@ -137,7 +137,7 @@ http.createServer(async (req, res) => {
     } : {});
     return res.end();
   }
-  if (req.method === 'GET' && req.url === '/healthz') return send(res, 200, { ok: true, model: MODEL, auth: API_KEY ? 'gemini-api' : 'vertex' }, origin);
+  if (req.method === 'GET' && req.url === '/api/health') return send(res, 200, { ok: true, model: MODEL, auth: API_KEY ? 'gemini-api' : 'vertex' }, origin);
   if (req.method !== 'POST' || !['/api/stylize', '/api/review'].includes(req.url)) return send(res, 404, { error: 'not found' }, origin);
   if (ORIGINS.length && !origin) return send(res, 403, { error: '這個網站沒有使用權限。' }, '');
   if (ACCESS_CODE && req.headers['x-access-code'] !== ACCESS_CODE) return send(res, 401, { error: '存取碼不正確。' }, origin);

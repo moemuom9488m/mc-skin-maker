@@ -70,12 +70,8 @@ canvas.px,img.px{image-rendering:pixelated;image-rendering:crisp-edges}
   background-image:linear-gradient(to right,rgba(255,255,255,.4) 1px,transparent 1px),linear-gradient(to bottom,rgba(255,255,255,.4) 1px,transparent 1px);background-size:12.5% 12.5%}
 .cropbox .handle{position:absolute;right:-10px;bottom:-10px;width:20px;height:20px;border-radius:6px;background:var(--accent);border:2px solid #fff;cursor:nwse-resize;touch-action:none}
 .cropbox .tag{position:absolute;left:-2px;top:-22px;background:var(--accent);color:var(--accent-ink);font-size:10px;padding:2px 6px;white-space:nowrap;border-radius:4px 4px 0 0}
-.partbox{position:absolute;border:2px solid var(--c);background:color-mix(in srgb,var(--c) 12%,transparent);cursor:move;touch-action:none}
-.partbox:hover,.partbox:focus-visible{background:color-mix(in srgb,var(--c) 26%,transparent)}
-.partbox .ptag{position:absolute;left:-2px;top:-2px;background:var(--c);color:#111;font-size:10px;line-height:14px;padding:0 4px;pointer-events:none;white-space:nowrap}
-.partbox .pt{position:absolute;width:14px;height:14px;border-radius:50%;background:var(--c);border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);touch-action:none;z-index:2}
-.partbox .pt0{left:-8px;top:-8px;cursor:nwse-resize}.partbox .pt1{right:-8px;top:-8px;cursor:nesw-resize}
-.partbox .pt2{right:-8px;bottom:-8px;cursor:nwse-resize}.partbox .pt3{left:-8px;bottom:-8px;cursor:nesw-resize}
+.partpoly{cursor:move;outline:none}.partpoly:hover,.partpoly:focus-visible{fill-opacity:.3}
+.partpt{cursor:grab;touch-action:none}.partpt:hover{stroke-width:3}
 .styles{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;padding:4px 2px 10px}
 .style-card{flex:0 0 112px;scroll-snap-align:start;border:2px solid var(--line);border-radius:14px;background:var(--panel);padding:8px;cursor:pointer;text-align:center;transition:border-color .15s,transform .15s}
 .style-card:hover{transform:translateY(-2px)}
@@ -373,7 +369,7 @@ function buildSkin(an,f,col0,o,styleId,back){
   // HEAD — front face comes straight from the cropped photo
   // f.h: a non-square head (an animal's head with ears) is squeezed into the 8×8 face
   const H=box(0,0,8,8,8), kc=1+o.contrast/100, cell=f.s/8, cellY=(f.h||f.s)/8;
-  const segFace=o.sampleBody&&an.seg?sampleRect(an,[f.x,f.y,f.x+f.s,f.y+(f.h||f.s)],8,8):null;
+  const segFace=o.sampleBody&&an.seg?sampleRect(an,[f.x,f.y,f.x+f.s,f.y+(f.h||f.s)],8,8,an.seg.pm?.head):null;
   fill(H.front,(px,py)=>{
     const c=segFace?[...segFace(px,py),255]:avgBox(an,f.x+px*cell,f.y+py*cellY,f.x+(px+1)*cell,f.y+(py+1)*cellY);
     let rgb=c[3]<128?one(col.skin):c.slice(0,3).map(v=>(v-128)*kc+128);
@@ -443,24 +439,24 @@ function buildSkin(an,f,col0,o,styleId,back){
       fill(box(0,16,4,12,4)[F],grid(A,R?g.x:g.x+s/2,l,s/2,h,4,12,col.pants));
       fill(box(16,48,4,12,4)[F],grid(A,R?g.x+s/2:g.x,l,s/2,h,4,12,col.pants));
     };
-    // Segmented figure: each part is sampled from its own measured rectangle
-    const segFill=(F,A,r,cols,rows,fb)=>{ const g=sampleRect(A,r,cols,rows); fill(F,(px,py)=>[g?g(px,py):one(fb),0,false]); };
+    // Segmented figure: each part is sampled from its own outline (bounding box for the layout, polygon mask for the pixels)
+    const segFill=(F,A,k,cols,rows,fb)=>{ const g=sampleRect(A,A.seg[k],cols,rows,A.seg.pm?.[k]); fill(F,(px,py)=>[g?g(px,py):one(fb),0,false]); };
     if(an.seg){
       const s=an.seg;
-      segFill(box(16,16,8,12,4).front,an,s.body,8,12,col.shirt);
-      segFill(box(40,16,aw,12,4).front,an,s.armL,aw,12,col.shirt);
-      segFill(box(32,48,aw,12,4).front,an,s.armR,aw,12,col.shirt);
-      segFill(box(0,16,4,12,4).front,an,s.legL,4,12,col.pants);
-      segFill(box(16,48,4,12,4).front,an,s.legR,4,12,col.pants);
+      segFill(box(16,16,8,12,4).front,an,'body',8,12,col.shirt);
+      segFill(box(40,16,aw,12,4).front,an,'armL',aw,12,col.shirt);
+      segFill(box(32,48,aw,12,4).front,an,'armR',aw,12,col.shirt);
+      segFill(box(0,16,4,12,4).front,an,'legL',4,12,col.pants);
+      segFill(box(16,48,4,12,4).front,an,'legR',4,12,col.pants);
     }else limbs(an,f,'front');
     if(back&&back.an.seg){
       const s=back.an.seg;
-      segFill(box(0,0,8,8,8).back,back.an,s.head,8,8,col.hair);
-      segFill(box(16,16,8,12,4).back,back.an,s.body,8,12,col.shirt);
-      segFill(box(40,16,aw,12,4).back,back.an,s.armR,aw,12,col.shirt);
-      segFill(box(32,48,aw,12,4).back,back.an,s.armL,aw,12,col.shirt);
-      segFill(box(0,16,4,12,4).back,back.an,s.legR,4,12,col.pants);
-      segFill(box(16,48,4,12,4).back,back.an,s.legL,4,12,col.pants);
+      segFill(box(0,0,8,8,8).back,back.an,'head',8,8,col.hair);
+      segFill(box(16,16,8,12,4).back,back.an,'body',8,12,col.shirt);
+      segFill(box(40,16,aw,12,4).back,back.an,'armR',aw,12,col.shirt);
+      segFill(box(32,48,aw,12,4).back,back.an,'armL',aw,12,col.shirt);
+      segFill(box(0,16,4,12,4).back,back.an,'legR',4,12,col.pants);
+      segFill(box(16,48,4,12,4).back,back.an,'legL',4,12,col.pants);
     }else if(back){
       fill(box(0,0,8,8,8).back,grid(back.an,back.f.x,back.f.y,back.f.s,back.f.s,8,8,col.hair));
       limbs(back.an,back.f,'back');
@@ -656,8 +652,8 @@ function faceFromSeg(seg){
 // cols×rows texel colours of rect r from only the character pixels of a segmented image. Per-channel
 // median, not mean, so thin stripes and eyes stay crisp. Texels with no character pixels copy their
 // nearest filled neighbour. null if the rect has no character at all.
-function sampleRect(an,r,cols,rows){
-  const [x0,y0,x1,y1]=r, m=an.seg.mask, cw=(x1-x0)/cols, ch=(y1-y0)/rows, out=new Array(cols*rows).fill(null);
+function sampleRect(an,r,cols,rows,mask){
+  const [x0,y0,x1,y1]=r, m=mask||an.seg.mask, cw=(x1-x0)/cols, ch=(y1-y0)/rows, out=new Array(cols*rows).fill(null);
   const med=a=>{a.sort((p,q)=>p-q);return a[a.length>>1];};
   for(let j=0;j<rows;j++)for(let i=0;i<cols;i++){
     const R=[],G=[],B=[];
@@ -811,46 +807,88 @@ function PixelIcon({cells,color='var(--accent-strong)'}){
   </svg>`;
 }
 
-// Draggable part rectangles over an AI figure. armL/legL are on the viewer's left in that view.
+// Draggable part outlines over an AI figure. armL/legL are on the viewer's left in that view.
 const PART_META=[['head','頭','#ffd02e'],['body','身體','#ff7a7a'],['armL','手','#5cb8ff'],['armR','手','#5cb8ff'],['legL','腳','#5fd97a'],['legR','腳','#5fd97a']];
 function PartsEditor({src,an,parts,setParts}){
   const wrap=useRef(null);
-  // mode 'move' drags the whole box; 0-3 drag one corner (top-left, top-right, bottom-right, bottom-left)
-  const start=(e,key,mode)=>{
+  const toImg=e=>{ const r=wrap.current.getBoundingClientRect(), k=an.w/r.width; return [(e.clientX-r.left)*k,(e.clientY-r.top)*k]; };
+  const cl=([x,y])=>[clamp(Math.round(x),0,an.w),clamp(Math.round(y),0,an.h)];
+  // idx -1 drags the whole outline, otherwise one point
+  const drag=(e,key,idx)=>{
+    if(e.button>0) return;
     e.preventDefault(); e.stopPropagation();
-    const rect=wrap.current.getBoundingClientRect(), k=an.w/rect.width, s0={px:e.clientX,py:e.clientY,r:parts[key].slice()};
-    const move=ev=>{
-      const dx=(ev.clientX-s0.px)*k, dy=(ev.clientY-s0.py)*k; let [x0,y0,x1,y1]=s0.r;
-      if(mode==='move'){ const w=x1-x0,h=y1-y0; x0=clamp(x0+dx,0,an.w-w); y0=clamp(y0+dy,0,an.h-h); x1=x0+w; y1=y0+h; }
-      else{
-        if(mode===0||mode===3) x0=clamp(x0+dx,0,x1-4); else x1=clamp(x1+dx,x0+4,an.w);
-        if(mode===0||mode===1) y0=clamp(y0+dy,0,y1-4); else y1=clamp(y1+dy,y0+4,an.h);
-      }
-      setParts(p=>({...p,[key]:[x0,y0,x1,y1].map(Math.round)}));
-    };
+    const p0=toImg(e), poly0=parts[key].map(q=>q.slice());
+    const move=ev=>{ const p=toImg(ev), dx=p[0]-p0[0], dy=p[1]-p0[1];
+      setParts(P=>({...P,[key]:poly0.map((q,i)=>idx<0||i===idx?cl([q[0]+dx,q[1]+dy]):q)})); };
     const up=()=>{window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);};
     window.addEventListener('pointermove',move); window.addEventListener('pointerup',up);
   };
+  // double-click an edge: insert a point on the nearest edge
+  const addPoint=(e,key)=>{
+    e.preventDefault(); e.stopPropagation(); const [px,py]=toImg(e), poly=parts[key];
+    let best=0,bd=Infinity;
+    poly.forEach((a,i)=>{ const b=poly[(i+1)%poly.length], vx=b[0]-a[0], vy=b[1]-a[1], L=vx*vx+vy*vy||1;
+      const t=clamp(((px-a[0])*vx+(py-a[1])*vy)/L,0,1), d=(a[0]+t*vx-px)**2+(a[1]+t*vy-py)**2; if(d<bd){bd=d;best=i;} });
+    setParts(P=>({...P,[key]:[...poly.slice(0,best+1),cl([px,py]),...poly.slice(best+1)]}));
+  };
+  const delPoint=(e,key,idx)=>{
+    e.preventDefault(); e.stopPropagation();
+    if(parts[key].length>3) setParts(P=>({...P,[key]:P[key].filter((_,i)=>i!==idx)}));
+  };
   const onKey=(e,key)=>{
     const st=e.shiftKey?6:1, d={ArrowLeft:[-st,0],ArrowRight:[st,0],ArrowUp:[0,-st],ArrowDown:[0,st]}[e.key]; if(!d) return;
-    e.preventDefault(); const [x0,y0,x1,y1]=parts[key], w=x1-x0, h=y1-y0;
-    const nx=clamp(x0+d[0],0,an.w-w), ny=clamp(y0+d[1],0,an.h-h);
-    setParts(p=>({...p,[key]:[nx,ny,nx+w,ny+h]}));
+    e.preventDefault(); setParts(P=>({...P,[key]:P[key].map(q=>cl([q[0]+d[0],q[1]+d[1]]))}));
   };
-  const pc=(v,t)=>v/t*100+'%';
+  const u=an.w/300; // one screen-ish unit in image pixels, for handle size and labels
   return html`<div ref=${wrap} class="relative select-none mx-auto rounded-xl" style=${{maxWidth:'100%',width:an.w>=an.h?'100%':(an.w/an.h*320)+'px'}}>
     <img src=${src} alt="AI 畫的角色" class="block w-full h-auto rounded-xl" draggable="false" />
-    ${PART_META.slice().reverse().map(([key,zh,c])=>{ const r=parts[key]; if(!r) return null; const [x0,y0,x1,y1]=r;
-      return html`<div key=${key} class="partbox" tabIndex="0" role="group" aria-label=${zh+'取樣框：拖曳移動，拖曳圓點調整邊界，方向鍵微調'}
-        style=${{'--c':c,left:pc(x0,an.w),top:pc(y0,an.h),width:pc(x1-x0,an.w),height:pc(y1-y0,an.h)}}
-        onPointerDown=${e=>start(e,key,'move')} onKeyDown=${e=>onKey(e,key)}>
-        <span class="ptag">${zh}</span>
-        ${[0,1,2,3].map(i=>html`<i key=${i} class=${'pt pt'+i} onPointerDown=${e=>start(e,key,i)}></i>`)}
-      </div>`;})}
+    <svg class="absolute inset-0 w-full h-full" viewBox=${'0 0 '+an.w+' '+an.h} preserveAspectRatio="none" style=${{touchAction:'none',overflow:'visible'}}>
+      ${PART_META.slice().reverse().map(([key,zh,c])=>{ const poly=parts[key]; if(!poly) return null; const [bx,by]=polyBBox(poly);
+        return html`<g key=${key}>
+          <polygon class="partpoly" points=${poly.map(q=>q.join(',')).join(' ')} fill=${c} fill-opacity=".14" stroke=${c} stroke-width="2"
+            vector-effect="non-scaling-stroke" tabIndex="0" aria-label=${zh+'取樣輪廓：拖曳移動，方向鍵微調'}
+            onPointerDown=${e=>drag(e,key,-1)} onDblClick=${e=>addPoint(e,key)} onKeyDown=${e=>onKey(e,key)} />
+          <text x=${bx+u} y=${by+9*u} font-size=${9*u} fill=${c} stroke="#000" stroke-width=${u*.6} paint-order="stroke" pointer-events="none">${zh}</text>
+          ${poly.map((q,i)=>html`<circle key=${i} class="partpt" cx=${q[0]} cy=${q[1]} r=${5*u} fill=${c} stroke="#fff" stroke-width="2"
+            vector-effect="non-scaling-stroke" onPointerDown=${e=>drag(e,key,i)} onDblClick=${e=>delPoint(e,key,i)} onContextMenu=${e=>delPoint(e,key,i)} />`)}
+        </g>`;})}
+    </svg>
   </div>`;
 }
 const PART_KEYS=['head','body','armL','armR','legL','legR'];
-const pickParts=seg=>seg?Object.fromEntries(PART_KEYS.map(k=>[k,seg[k].map(Math.round)])):null;
+const polyBBox=p=>{ const xs=p.map(q=>q[0]), ys=p.map(q=>q[1]); return [Math.min(...xs),Math.min(...ys),Math.max(...xs)+1,Math.max(...ys)+1]; };
+// Outline of the character pixels inside rect r: leftmost/rightmost x at 5 heights, so tilted or uneven parts
+// (ears, a raised arm, a cape edge) get a matching shape instead of a box
+function tracePart(mask,w,r){
+  const [x0,y0,x1,y1]=r.map(Math.round), ext=y=>{ let a=-1,b=-1; for(let x=x0;x<x1;x++) if(mask[y*w+x]){ if(a<0)a=x; b=x; } return a<0?null:[a,b]; };
+  const rows=[]; for(let y=y0;y<y1;y++) if(ext(y)) rows.push(y);
+  if(rows.length<2) return [[x0,y0],[x1,y0],[x1,y1],[x0,y1]];
+  const L=[],R=[], top=rows[0], bot=rows[rows.length-1];
+  for(const t of [0,.25,.5,.75,1]){
+    const yc=Math.round(top+(bot-top)*t); let a=Infinity,b=-Infinity;
+    for(let y=Math.max(top,yc-2);y<=Math.min(bot,yc+2);y++){ const e=ext(y); if(e){ a=Math.min(a,e[0]); b=Math.max(b,e[1]); } }
+    if(a===Infinity) continue;
+    const py=t===0?top:t===1?bot+1:yc; L.push([a,py]); R.push([b+1,py]);
+  }
+  return [...L,...R.reverse()];
+}
+const pickParts=an=>an&&an.seg?Object.fromEntries(PART_KEYS.map(k=>[k,tracePart(an.seg.mask,an.w,an.seg[k])])):null;
+// Pixels inside a polygon (and inside the character mask base), rasterised on a canvas
+function polyMask(an,poly,base){
+  const c=document.createElement('canvas'); c.width=an.w; c.height=an.h;
+  const x=c.getContext('2d',{willReadFrequently:true}); x.fillStyle='#fff'; x.beginPath();
+  poly.forEach(([px,py],i)=>i?x.lineTo(px,py):x.moveTo(px,py)); x.closePath(); x.fill();
+  const d=x.getImageData(0,0,an.w,an.h).data, m=new Uint8Array(an.w*an.h);
+  for(let p=0;p<m.length;p++) m[p]=d[p*4+3]>127&&(!base||base[p])?1:0;
+  return m;
+}
+// an with its segmentation replaced by edited polygons: bounding boxes for layout, masks for sampling
+function withParts(an,polys){
+  if(!an||!an.seg||!polys) return an;
+  const seg={...an.seg,pm:{}};
+  for(const k of PART_KEYS){ seg[k]=polyBBox(polys[k]); seg.pm[k]=polyMask(an,polys[k],an.seg.mask); }
+  return {...an,seg};
+}
 
 function Cropper({src,an,face,setFace}){
   const wrap=useRef(null);
@@ -945,7 +983,7 @@ function App(){
     if(kind==='ai') a.seg=segmentFigure(a);
     const f=(a.seg&&faceFromSeg(a.seg))||(kind==='ai'&&headBox(a))||detectFace(a);
     if(kind==='ai'&&!a.seg) a.seg=defaultParts(a,f);
-    const pf=kind==='ai'?pickParts(a.seg):null; autoParts.current.front=pf;
+    const pf=kind==='ai'?pickParts(a):null; autoParts.current.front=pf;
     setSrc(dataUrl); setAn(a); setFace(f); setOver({}); setSrcKind(kind); setPartsF(pf); setEditView('front');
     return f;
   },[]);
@@ -979,15 +1017,15 @@ function App(){
   const aw=opt.slim?3:4;
   const isAi=srcKind==='ai';
   // the edited part boxes replace the detected ones; the character mask is kept
-  const anS=useMemo(()=>an&&isAi&&an.seg&&partsF?{...an,seg:{...an.seg,...partsF}}:an,[an,isAi,partsF]);
+  const anS=useMemo(()=>isAi?withParts(an,partsF):an,[an,isAi,partsF]);
   const back=useMemo(()=>{
     if(!(isAi&&aiBack&&an&&face)) return null;
-    const B=aiBack.an.seg&&partsB?{...aiBack.an,seg:{...aiBack.an.seg,...partsB}}:aiBack.an;
+    const B=withParts(aiBack.an,partsB);
     return {an:B,f:backFace(an,face,aiBack.an)};
   },[isAi,aiBack,an,face,partsB]);
   // the head box drives the face texture
   useEffect(()=>{
-    if(!isAi||!partsF) return; const [x0,y0,x1,y1]=partsF.head;
+    if(!isAi||!partsF) return; const [x0,y0,x1,y1]=polyBBox(partsF.head);
     setFace(f=>f&&f.x===x0&&f.y===y0&&f.s===x1-x0&&(f.h||f.s)===y1-y0?f:{x:x0,y:y0,s:x1-x0,h:y1-y0,auto:true});
   },[isAi,partsF]);
   // In AI mode the image model already drew the chosen style, so the local style effects are skipped
@@ -1097,7 +1135,7 @@ function App(){
       const sheet=await splitSheet(`data:${j.mime||'image/png'};base64,${j.image}`);
       const backAn=sheet.back?analyze(await loadImage(sheet.back)):null;
       if(backAn) backAn.seg=segmentFigure(backAn)||defaultParts(backAn,headBox(backAn));
-      const pb=backAn?pickParts(backAn.seg):null; autoParts.current.back=pb; setPartsB(pb);
+      const pb=backAn?pickParts(backAn):null; autoParts.current.back=pb; setPartsB(pb);
       setAiBack(backAn?{url:sheet.back,an:backAn}:null);
       setAiSrc(sheet.front);
       const f=await loadSource(sheet.front,'ai');
@@ -1208,7 +1246,7 @@ function App(){
                 ${editView==='back'&&aiBack&&partsB
                   ?html`<${PartsEditor} src=${aiBack.url} an=${aiBack.an} parts=${partsB} setParts=${setPartsB} />`
                   :html`<${PartsEditor} src=${src} an=${an} parts=${partsF} setParts=${setPartsF} />`}
-                <p class="text-xs muted">拖曳框可移動，拖曳四角圓點可調整邊界；皮膚會立刻跟著更新。框選到角色以外的背景不會被取樣。</p>
+                <p class="text-xs muted">拖曳形狀可移動，拖曳圓點調整輪廓；在邊上雙擊新增點，在點上雙擊或按右鍵刪除點。皮膚會立刻跟著更新，輪廓外和角色以外的背景都不會被取樣。</p>
               </div>`
               :an&&face&&html`<${Cropper} src=${src} an=${an} face=${face} setFace=${setFace} />`}
               <div class="flex flex-wrap items-center justify-between gap-3 mt-3">

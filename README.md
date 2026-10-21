@@ -36,7 +36,7 @@ gcloud run deploy mc-skin-proxy --source . --region asia-east1 --allow-unauthent
 |---|---|
 | `ACCESS_CODE` | 存取碼，網頁上輸入正確才會呼叫模型 |
 | `ALLOWED_ORIGINS` | 只回應這些網站來源的瀏覽器請求 |
-| `RATE_PER_HOUR` | 每個 IP 每小時次數上限（預設 40；每次生成約用 3 次：找主體＋轉換＋審查） |
+| `RATE_PER_HOUR` | 每個 IP 每小時次數上限（預設 40；每次生成約用 3 次：找主體＋轉換＋審查，開啟「披風分層」再多 1 次） |
 | `REVIEW_MODEL` | 審查用的模型，預設 `gemini-2.5-flash` |
 | `LOCATE_MODEL` | 轉換前找出照片主體邊框、裁掉背景用的模型，預設 `gemini-2.5-flash` |
 | `MODEL` | 模型 ID，預設 `gemini-3.1-flash-image`（Nano Banana 2） |

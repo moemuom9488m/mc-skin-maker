@@ -38,6 +38,8 @@ function buildPrompt(style, desc, fix, subject) {
       : 'Turn the person in this photo into one Minecraft player character and draw a character reference sheet with exactly two full-body views of that same character side by side:',
     'LEFT half: FRONT view, facing the camera. RIGHT half: BACK view, seen from directly behind. Same size and same height in both views, feet on the same baseline, each figure centered in its half, nothing else on the canvas.',
     'In both views the character stands straight with arms straight down at the sides and legs together, full body from the top of the head to the feet visible.',
+    // In Minecraft a held item is rendered separately, so it must not end up baked into the skin
+    'Empty hands: leave out anything the character holds or carries in the photo (weapons, staffs, swords, shields, bags, phones, toys); do not draw it anywhere, and draw the hands and arms that it covered.',
     animal
       ? 'Whatever pose the animal is in, draw the character facing the camera directly, and invent any fur pattern the photo does not show so it matches the visible markings.'
       : 'If the photo is taken at an angle, in profile, from above or below, or shows only part of the body, rotate the person to face the camera directly, reconstruct the hidden side of the face symmetrically, and invent the missing body parts to match their outfit.',
@@ -45,7 +47,7 @@ function buildPrompt(style, desc, fix, subject) {
       ? 'The photo may not show the back, so invent a back view that matches: the back of the head with the ears, and the fur colors and markings of the back.'
       : 'The photo never shows the back, so invent a back view that matches: the back of the hairstyle, the back of the same clothes, the back of the shoes.',
     'Exact Minecraft proportions: a cube head, a rectangular torso, straight block arms and legs (head 8, torso 12, legs 12 units tall).',
-    'Draw it at the exact resolution of a 64x64 Minecraft skin, using big square texels of one equal size everywhere: the head front is exactly 8x8 texels, the torso 8x12, each arm 4x12 and each leg 4x12. Every texel is one flat colour; no detail finer than one texel (eyes, eyebrows and mouth are whole texels), like a real Minecraft player model seen in game.',
+    'Draw it at the exact resolution of a 64x64 Minecraft skin, using big square texels of one equal size everywhere: the head front is exactly 8x8 texels, the torso 8x12, each arm 4x12 and each leg 4x12. If the subject has a slim, slender build, use the slim Minecraft model instead: each arm only 3 texels wide (3x12), everything else unchanged. Every texel is one flat colour; no detail finer than one texel (eyes, eyebrows and mouth are whole texels), like a real Minecraft player model seen in game.',
     'Flat pixel-art texture with clearly visible square pixels, no anti-aliasing, no gradients, no outlines, no text, no logo.',
     animal
       ? 'Keep the animal recognizable: its face (eye color, nose, muzzle, whisker marks) on the front of the cube head, its ears painted flat as pixels inside the head cube (nothing sticking out of the cubes), and its exact fur colors and markings on the torso, arms and legs, with paws at the ends of the arms and legs.'
@@ -74,7 +76,9 @@ function reviewPrompt(colors, isAi, hasPhoto, style, subject) {
     animal
       ? 'Check: (1) is the yellow box on the head; (2) do the fur colors and markings in the skin match the source; (3) is the face readable (eyes visible, not a smear) and does it resemble the animal; (4) is image 1 a clean front-facing blocky figure (not turned to the side, not cropped, not a pasted photo).'
       : 'Check: (1) is the yellow square on the face; (2) are the skin, hair, shirt, pants and shoes colors right compared with the source; (3) is the face readable (eyes visible, not a smear) and does it resemble the person; (4) is image 1 a clean front-facing figure (not turned to the side, not in profile, not cropped).',
-    `Reply with only JSON: {"score": integer 1-10, "issues": [up to 5 short sentences in Traditional Chinese], "face_box": [ymin, xmin, ymax, xmax] of the ${animal ? 'head front' : 'face'} in image 1 on a 0-1000 scale, "colors": ${animal ? '{} (always empty for animals)' : '{only the keys among skin, hair, shirt, pants, shoes whose color is clearly wrong, as "#rrggbb"}'}, "regenerate": true only if image 1 itself is unusable (angled or profile view, cropped, wrong proportions, face unrecognizable${animal ? ', a pasted photo instead of pixel art' : ''}), "regenerate_hint": "short English instruction for the image model to fix it, or empty"}`,
+    // In Minecraft held items are rendered separately, so one drawn into the AI figure must not reach the skin
+    isAi ? 'Also check (5): does the figure in image 1 hold or carry anything (weapon, staff, sword, shield, bag, phone, toy)? A held item must not be part of a skin; parts of the costume itself (armor, claws, a cape) are not held items.' : '',
+    `Reply with only JSON: {"score": integer 1-10, "issues": [up to 5 short sentences in Traditional Chinese], "face_box": [ymin, xmin, ymax, xmax] of the ${animal ? 'head front' : 'face'} in image 1 on a 0-1000 scale, "colors": ${animal ? '{} (always empty for animals)' : '{only the keys among skin, hair, shirt, pants, shoes whose color is clearly wrong, as "#rrggbb"}'}, ${isAi ? '"held_item": "short name in Traditional Chinese of the item the figure holds, or empty", ' : ''}"regenerate": true only if image 1 itself is unusable (angled or profile view, cropped, wrong proportions, face unrecognizable${animal ? ', a pasted photo instead of pixel art' : ''}), "regenerate_hint": "short English instruction for the image model to fix it, or empty"}`,
   ].filter(Boolean).join('\n');
 }
 
@@ -164,6 +168,18 @@ async function stylize(body) {
   return { image: d.data, mime: d.mimeType || d.mime_type || 'image/png' };
 }
 
+// Cape layering: the same reference sheet with the cape (or cloak / robe) taken off, so the page can tell cape
+// texels (second layer) from the body underneath (first layer) by comparing the two, in both views
+function decapePrompt(hasPhoto) {
+  return [
+    'Image 1 is a character reference sheet of a blocky Minecraft player character: FRONT view on the left half, BACK view on the right half. The character wears a cape, cloak or robe.',
+    hasPhoto ? 'Image 2 is a photo of the same character without the cape, cloak or robe: use it for what the body underneath looks like.' : '',
+    'Redraw image 1 exactly, but with the cape, cloak or robe removed in BOTH views: show the torso, arms and legs as they look underneath, continuing the clothes, armor and colors that are visible.',
+    'Keep everything that is not the cape identical to image 1: canvas size, background color, each figure\'s position, size and proportions, the heads, and the same texel grid and pixel-art style.',
+    'If the character has no cape, return image 1 unchanged. No text, no labels.',
+  ].filter(Boolean).join('\n');
+}
+
 function send(res, status, obj, origin) {
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -186,7 +202,7 @@ http.createServer(async (req, res) => {
     return res.end();
   }
   if (req.method === 'GET' && req.url === '/api/health') return send(res, 200, { ok: true, model: MODEL, auth: API_KEY ? 'gemini-api' : 'vertex' }, origin);
-  if (req.method !== 'POST' || !['/api/stylize', '/api/review', '/api/locate'].includes(req.url)) return send(res, 404, { error: 'not found' }, origin);
+  if (req.method !== 'POST' || !['/api/stylize', '/api/review', '/api/locate', '/api/decape'].includes(req.url)) return send(res, 404, { error: 'not found' }, origin);
   if (ORIGINS.length && !origin) return send(res, 403, { error: '這個網站沒有使用權限。' }, '');
   if (ACCESS_CODE && req.headers['x-access-code'] !== ACCESS_CODE) return send(res, 401, { error: '存取碼不正確。' }, origin);
 
@@ -206,6 +222,18 @@ http.createServer(async (req, res) => {
     if (typeof image !== 'string' || !image) return send(res, 400, { error: '缺少圖片。' }, origin);
     if (!/^image\/(jpeg|png|webp)$/.test(mime)) return send(res, 400, { error: '只接受 JPG、PNG、WebP。' }, origin);
     if (req.url === '/api/locate') return send(res, 200, await locate(image, mime, subject === 'animal' ? 'animal' : 'person'), origin);
+    if (req.url === '/api/decape') {
+      // image = the AI front+back sheet; photo (optional) = the user's photo of the character without the cape
+      if (body.photo != null && typeof body.photo !== 'string') return send(res, 400, { error: '參考照片格式不正確。' }, origin);
+      return send(res, 200, await stylize({
+        contents: [{ role: 'user', parts: [
+          { text: decapePrompt(!!body.photo) },
+          { inline_data: { mime_type: mime, data: image } },
+          ...(body.photo ? [{ inline_data: { mime_type: 'image/jpeg', data: body.photo } }] : []),
+        ] }],
+        generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: '3:2' } },
+      }), origin);
+    }
 
     const out = await stylize({
       contents: [{ role: 'user', parts: [

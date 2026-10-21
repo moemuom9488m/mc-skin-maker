@@ -1066,6 +1066,8 @@ function App(){
   const colors=useMemo(()=>{ if(!detected) return null; const c={}; for(const [k] of COLOR_KEYS) c[k]=over[k]||detected[k]; return c; },[detected,over]);
   const aw=opt.slim?3:4;
   const isAi=srcKind==='ai';
+  // AI mode before the first generation: the photo-sampled skin would mislead, so the result panel waits
+  const waiting=!!(aiOn&&API.base&&!isAi&&!isSample&&!aiSrc);
   // the edited part boxes replace the detected ones; the character mask is kept
   const anS=useMemo(()=>isAi?withParts(an,partsF):an,[an,isAi,partsF]);
   const back=useMemo(()=>{
@@ -1409,14 +1411,19 @@ function App(){
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div class="label">角色預覽 <small>正面 · 側面 · 背面</small></div>
           </div>
-          ${skin&&html`<div class="checker rounded-2xl grid grid-cols-3 gap-2 py-6 px-2">
+          ${waiting&&html`<div class="checker rounded-2xl flex flex-col items-center justify-center gap-3 text-center px-6" style=${{minHeight:'220px'}}>
+            <${PixelIcon} cells="0111010001101011000101110" />
+            <p class="font-bold">${busy?'Nano Banana 繪製中…':'等待 AI 生成'}</p>
+            <p class="text-sm muted" style=${{maxWidth:'34ch'}}>${busy?'正在把框內的主體畫成正面＋背面的方塊角色，約 10–30 秒。':'確認左邊黃框框住要轉換的主體後，按「AI 生成皮膚」，正面、側面、背面預覽會出現在這裡。'}</p>
+          </div>`}
+          ${skin&&!waiting&&html`<div class="checker rounded-2xl grid grid-cols-3 gap-2 py-6 px-2">
             ${[['front','正面'],['right','側面'],['back','背面']].map(([v,zh])=>html`<figure key=${v} class="flex flex-col items-center gap-2 min-w-0">
               <${Doll} img=${skin} aw=${aw} side=${v} w=${80} />
               <figcaption class="text-xs muted">${zh}</figcaption>
             </figure>`)}
           </div>`}
 
-          ${reviewOk&&html`<div class="sub p-4 flex flex-col gap-2" aria-live="polite">
+          ${reviewOk&&!waiting&&html`<div class="sub p-4 flex flex-col gap-2" aria-live="polite">
             <div class="flex items-center justify-between gap-3">
               <div class="label">AI 審查 <small>${API.base?'Gemini':'Claude'} 檢查臉部位置、顏色與角度</small></div>
               ${review?.state==='done'&&html`<span class="chip mono font-bold" style=${{color:review.score>=8?'var(--ok)':review.score>=5?'var(--ink)':'var(--warn)'}}>${review.score} / 10</span>`}
@@ -1432,7 +1439,7 @@ function App(){
               onClick=${()=>{attemptRef.current=1;setReviewTick(t=>t+1);}}>${review?'重新審查':'立即審查'}</button></div>
           </div>`}
 
-          <div class="sub p-3">
+          <div class="sub p-3" hidden=${waiting}>
             <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
               <div class="label">皮膚展開圖 <small class="mono">64 × 64 px</small></div>
               <label class="flex items-center gap-2 text-sm"><input id="grid" type="checkbox" checked=${opt.grid} onChange=${e=>setO('grid',e.target.checked)} style=${{accentColor:'var(--accent-strong)'}} /> 部位框線</label>
@@ -1445,7 +1452,7 @@ function App(){
             </div>
           </div>
 
-          <div class="flex flex-wrap items-center gap-4">
+          <div class="flex flex-wrap items-center gap-4" hidden=${waiting}>
             <div class="checker rounded-lg p-1"><canvas ref=${skinCv} width="64" height="64" class="px block" style=${{width:'64px',height:'64px'}} aria-label="實際大小"></canvas></div>
             <button type="button" class="btn btn-primary flex-1" onClick=${download} disabled=${saving||!skin}>
               <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M7 1h2v8h2l-3 3-3-3h2zM2 13h12v2H2z"/></svg>

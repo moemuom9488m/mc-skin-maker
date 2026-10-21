@@ -351,7 +351,8 @@ const STYLES=[
   ['netherknight','Nether Knight','獄髓騎士'],['knight','Medieval Knight','中世紀騎士'],['dragon','Ender Dragon','終界龍鱗'],['hero','Pixel Hero','像素英雄'],
 ];
 
-function buildSkin(an,f,col0,o,styleId){
+// back = {an,f}: the AI back view and the head box in it; used with o.sampleBody (AI mode)
+function buildSkin(an,f,col0,o,styleId,back){
   const st=STYLE_FX[styleId]||STYLE_FX.classic;
   const col=st.colors?st.colors(col0):col0;
   const img=new ImageData(64,64), D=img.data;
@@ -416,6 +417,39 @@ function buildSkin(an,f,col0,o,styleId){
     fill(L.top,()=>[col.pants]);
     fill(L.bottom,()=>[col.shoes,-.15]);
   }
+  // AI mode: the figure already has Minecraft proportions (head 8, torso 8×12, arms 4×12, legs 4×12),
+  // so front and back faces are sampled straight from the drawn views instead of filled flat
+  if(o.sampleBody){
+    const grid=(A,x,y,w,h,cols,rows,fb)=>(px,py)=>{
+      const v=avgBox(A,x+px*w/cols,y+py*h/rows,x+(px+1)*w/cols,y+(py+1)*h/rows);
+      return [v[3]<128?one(fb):v.slice(0,3),0,false];
+    };
+    const limbs=(A,g,side)=>{
+      const s=g.s, a=s*aw/8, t=g.y+s, l=g.y+2.5*s, h=1.5*s;
+      // front view: character's right arm/leg on the viewer's left; back view: the opposite
+      const R=side==='front', F=side;
+      fill(box(16,16,8,12,4)[F],grid(A,g.x,t,s,h,8,12,col.shirt));
+      fill(box(40,16,aw,12,4)[F],grid(A,R?g.x-a:g.x+s,t,a,h,aw,12,col.shirt));
+      fill(box(32,48,aw,12,4)[F],grid(A,R?g.x+s:g.x-a,t,a,h,aw,12,col.shirt));
+      fill(box(0,16,4,12,4)[F],grid(A,R?g.x:g.x+s/2,l,s/2,h,4,12,col.pants));
+      fill(box(16,48,4,12,4)[F],grid(A,R?g.x+s/2:g.x,l,s/2,h,4,12,col.pants));
+    };
+    limbs(an,f,'front');
+    if(back){
+      fill(box(0,0,8,8,8).back,grid(back.an,back.f.x,back.f.y,back.f.s,back.f.s,8,8,col.hair));
+      limbs(back.an,back.f,'back');
+    }
+    // Sides, top and bottom are never drawn by the AI: continue the edge pixels of the front and back faces.
+    // Unwrap adjacency: right side meets front's left edge and back's right edge; left side the opposite.
+    const px=(x,y)=>{ const i=(y*64+x)*4; return [D[i],D[i+1],D[i+2]]; };
+    for(const [u,v,w,h,d] of [[0,0,8,8,8],[16,16,8,12,4],[40,16,aw,12,4],[32,48,aw,12,4],[0,16,4,12,4],[16,48,4,12,4]]){
+      const F=box(u,v,w,h,d), Fr=F.front, Bk=back?F.back:F.front, bx=c=>back?Bk.x+w-1-c:Fr.x+c;
+      fill(F.right,(x,y)=>[px(x>=d/2?Fr.x:Bk.x+w-1,Fr.y+y),-.06]);
+      fill(F.left,(x,y)=>[px(x<d/2?Fr.x+w-1:Bk.x,Fr.y+y),-.06]);
+      fill(F.top,(x,y)=>[px(y>=d/2?Fr.x+x:bx(x),y>=d/2?Fr.y:Bk.y),.04]);
+      fill(F.bottom,(x)=>[px(Fr.x+x,Fr.y+h-1),-.12]);
+    }
+  }
   if(st.overlay) st.overlay({fill,aw});
   return img;
 }
@@ -439,6 +473,43 @@ function makeSample(){
   rr(104,288,52,132,4,'#2c3e70'); rr(164,288,52,132,4,'#2c3e70');
   rr(100,416,58,30,6,'#3b2a20'); rr(162,416,58,30,6,'#3b2a20');
   return cv.toDataURL('image/png');
+}
+// The AI returns one landscape sheet: front view on the left half, back view on the right half
+async function splitSheet(url){
+  const img=await loadImage(url), W=img.naturalWidth, H=img.naturalHeight;
+  if(W/H<1.2) return {front:url,back:null};
+  const half=x=>{ const c=document.createElement('canvas'); c.width=Math.floor(W/2); c.height=H;
+    c.getContext('2d').drawImage(img,x,0,c.width,H,0,0,c.width,H); return c.toDataURL('image/png'); };
+  return {front:half(0),back:half(Math.floor(W/2))};
+}
+// Horizontal centre and top of the figure, found by comparing pixels with the corner background
+function figureBounds(an){
+  const bg=[0,1,2].map(i=>an.d[i]), fg=(x,y)=>{ const i=(y*an.w+x)*4; return Math.abs(an.d[i]-bg[0])+Math.abs(an.d[i+1]-bg[1])+Math.abs(an.d[i+2]-bg[2])>60; };
+  let x0=an.w,x1=-1,top=an.h;
+  for(let y=0;y<an.h;y+=2)for(let x=0;x<an.w;x+=2) if(fg(x,y)){ if(x<x0)x0=x; if(x>x1)x1=x; if(y<top)top=y; }
+  return x1<0?null:{cx:(x0+x1)/2,top};
+}
+// Exact head cube of a blocky AI figure: the topmost foreground rows, measured on a few rows below the top
+function headBox(an){
+  const bg=[0,1,2].map(i=>an.d[i]), fg=(x,y)=>{ const i=(y*an.w+x)*4; return Math.abs(an.d[i]-bg[0])+Math.abs(an.d[i+1]-bg[1])+Math.abs(an.d[i+2]-bg[2])>60; };
+  const b=figureBounds(an); if(!b) return null;
+  const xs0=[],xs1=[];
+  for(let y=b.top+2;y<Math.min(an.h,b.top+14);y++){
+    let x0=-1,x1=-1; for(let x=0;x<an.w;x++) if(fg(x,y)){ if(x0<0)x0=x; x1=x; }
+    if(x0>=0){ xs0.push(x0); xs1.push(x1); }
+  }
+  if(!xs0.length) return null;
+  const med=a=>a.sort((p,q)=>p-q)[a.length>>1], x0=med(xs0), s=med(xs1)-x0+1;
+  if(s<an.w*.08||s>an.w*.9||b.top+s>an.h) return null;
+  return {x:x0,y:b.top,s,auto:true};
+}
+// Head box in the back view: measured the same way, else the front box moved to the back figure
+function backFace(anF,f,anB){
+  const h=headBox(anB); if(h) return h;
+  const a=figureBounds(anF), b=figureBounds(anB);
+  if(!a||!b) return {...f};
+  const s=f.s;
+  return {s,x:clamp(b.cx-s/2,0,anB.w-s),y:clamp(f.y+(b.top-a.top),0,anB.h-s)};
 }
 function loadImage(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
 
@@ -596,6 +667,7 @@ function App(){
   const [src,setSrc]=useState(null);
   const [photo,setPhoto]=useState(null);
   const [aiSrc,setAiSrc]=useState(null);
+  const [aiBack,setAiBack]=useState(null);
   const [srcKind,setSrcKind]=useState('photo');
   const [aiOn,setAiOn]=useState(!!API.base);
   const [code,setCode]=useState(()=>{ try{ return localStorage.getItem('skin-access-code')||''; }catch{ return ''; } });
@@ -629,12 +701,12 @@ function App(){
     try{
       const img=await loadImage(dataUrl); const a=analyze(img); const f=detectFace(a);
       setSrc(dataUrl); setAn(a); setFace(f); setOver({}); setIsSample(sample); setFallbackUrl(null);
-      setPhoto(dataUrl); setAiSrc(null); setSrcKind('photo');
+      setPhoto(dataUrl); setAiSrc(null); setAiBack(null); setSrcKind('photo');
       if(!sample) say(f.auto?'已自動找到臉部，可拖曳黃框微調。':'沒有偵測到明顯的臉，請手動把黃框拖到臉上。');
     }catch{ say('無法讀取這個檔案。請改用 JPG、PNG 或 WebP 圖片。'); }
   },[say]);
   const loadSource=useCallback(async(dataUrl,kind)=>{
-    const img=await loadImage(dataUrl); const a=analyze(img); const f=detectFace(a);
+    const img=await loadImage(dataUrl); const a=analyze(img); const f=(kind==='ai'&&headBox(a))||detectFace(a);
     setSrc(dataUrl); setAn(a); setFace(f); setOver({}); setSrcKind(kind);
     return f;
   },[]);
@@ -666,7 +738,10 @@ function App(){
   const detected=useMemo(()=>an&&face?detectColors(an,face,srcKind==='ai'):null,[an,face,srcKind]);
   const colors=useMemo(()=>{ if(!detected) return null; const c={}; for(const [k] of COLOR_KEYS) c[k]=over[k]||detected[k]; return c; },[detected,over]);
   const aw=opt.slim?3:4;
-  const skin=useMemo(()=>an&&face&&colors?buildSkin(an,face,colors,opt,style):null,[an,face,colors,opt,style]);
+  const isAi=srcKind==='ai';
+  const back=useMemo(()=>isAi&&aiBack&&an&&face?{an:aiBack.an,f:backFace(an,face,aiBack.an)}:null,[isAi,aiBack,an,face]);
+  // In AI mode the image model already drew the chosen style, so the local style effects are skipped
+  const skin=useMemo(()=>an&&face&&colors?buildSkin(an,face,colors,{...opt,sampleBody:isAi},isAi?'classic':style,back):null,[an,face,colors,opt,style,isAi,back]);
   const thumbs=useMemo(()=>an&&face&&colors?Object.fromEntries(STYLES.map(([id])=>[id,buildSkin(an,face,colors,opt,id)])):{},[an,face,colors,opt]);
 
   useEffect(()=>{
@@ -752,9 +827,10 @@ function App(){
       });
       const j=await res.json().catch(()=>({}));
       if(!res.ok||!j.image) throw new Error(j.error||`伺服器回應 ${res.status}`);
-      const url=`data:${j.mime||'image/png'};base64,${j.image}`;
-      setAiSrc(url);
-      const f=await loadSource(url,'ai');
+      const sheet=await splitSheet(`data:${j.mime||'image/png'};base64,${j.image}`);
+      setAiBack(sheet.back?{url:sheet.back,an:analyze(await loadImage(sheet.back))}:null);
+      setAiSrc(sheet.front);
+      const f=await loadSource(sheet.front,'ai');
       if(autoReview&&reviewOk) setReviewTick(t=>t+1);
       else say(f.auto?'Nano Banana 轉換完成，已自動對準臉部。':'轉換完成，但沒有找到臉，請手動把黃框拖到頭上。');
     }catch(e){
@@ -858,7 +934,7 @@ function App(){
               <div class="flex flex-wrap items-center justify-between gap-3 mt-3">
                 <p class="text-sm muted min-w-0">${isSample?'目前是範例角色。拖放照片到這裡、貼上，或':'拖曳黃框對準臉部，右下角可縮放。'}</p>
                 <div class="flex gap-2">
-                  ${!isSample&&html`<button type="button" class="btn btn-ghost text-sm" onClick=${()=>setFace(detectFace(an))}>重新偵測</button>`}
+                  ${!isSample&&html`<button type="button" class="btn btn-ghost text-sm" onClick=${()=>setFace((isAi&&headBox(an))||detectFace(an))}>重新偵測</button>`}
                   <button type="button" class="btn btn-dark text-sm" onClick=${()=>fileIn.current.click()}>${isSample?'選擇照片':'更換照片'}</button>
                 </div>
               </div>
@@ -873,6 +949,11 @@ function App(){
             </label>
             ${aiOn&&API.needsCode&&html`<input id="code" type="text" autocomplete="off" placeholder="輸入存取碼" value=${code}
               onInput=${e=>{setCode(e.target.value);try{localStorage.setItem('skin-access-code',e.target.value);}catch{}}} />`}
+            ${isAi&&aiBack&&html`<div class="flex items-center gap-3">
+              <img src=${aiBack.url} alt="AI 生成的背面" class="rounded-lg h-24 w-auto" />
+              <p class="text-sm muted min-w-0">AI 補畫的背面。皮膚的背面直接從這張取樣，正面從上方黃框那張取樣。</p>
+            </div>`}
+            ${isAi&&style!=='classic'&&html`<p class="text-xs muted">風格已由 AI 畫進圖裡；換風格後請再按一次「AI 生成皮膚」。</p>`}
             ${aiSrc&&html`<div class="flex flex-wrap items-center gap-3"><span class="text-sm muted">臉部與顏色取樣自</span>
               <${Seg} label="取樣來源" value=${srcKind} onChange=${v=>loadSource(v==='ai'?aiSrc:photo,v)} options=${[['ai','AI 轉換圖'],['photo','原始照片']]} /></div>`}
           </div>`:null}

@@ -27,16 +27,18 @@ const STYLE_TEXT = {
 
 function buildPrompt(style, desc, fix) {
   return [
-    'Turn the person in this photo into one Minecraft player character.',
-    'Front view, standing straight and facing the camera, arms straight down at the sides, legs together, full body from the top of the head to the feet visible and centered.',
+    'Turn the person in this photo into one Minecraft player character and draw a character reference sheet with exactly two full-body views of that same character side by side:',
+    'LEFT half: FRONT view, facing the camera. RIGHT half: BACK view, seen from directly behind. Same size and same height in both views, feet on the same baseline, each figure centered in its half, nothing else on the canvas.',
+    'In both views the character stands straight with arms straight down at the sides and legs together, full body from the top of the head to the feet visible.',
     'If the photo is taken at an angle, in profile, from above or below, or shows only part of the body, rotate the person to face the camera directly, reconstruct the hidden side of the face symmetrically, and invent the missing body parts to match their outfit.',
+    'The photo never shows the back, so invent a back view that matches: the back of the hairstyle, the back of the same clothes, the back of the shoes.',
     'Exact Minecraft proportions: a cube head, a rectangular torso, straight block arms and legs (head 8, torso 12, legs 12 units tall).',
     'Flat pixel-art texture with clearly visible square pixels, no anti-aliasing, no outlines, no text, no logo.',
     'Keep the person recognizable on the front of the cube head: hairstyle and hair color, skin tone, eye color, glasses or facial hair if present. Keep their clothing colors on the torso, arms and legs.',
     `Style: ${STYLE_TEXT[style] || STYLE_TEXT.classic}.`,
     desc ? `Extra request from the user: ${desc}` : '',
     fix ? `A quality check of the previous attempt asked for this correction: ${fix}` : '',
-    'Plain flat light grey background (#d9d9d9), no shadow, no scenery, portrait 3:4 framing.',
+    'Plain flat light grey background (#d9d9d9), no shadow, no scenery, no labels, landscape 3:2 canvas.',
   ].filter(Boolean).join('\n');
 }
 
@@ -163,7 +165,7 @@ http.createServer(async (req, res) => {
         { text: buildPrompt(String(style), String(desc).slice(0, 300), String(fix).slice(0, 300)) },
         { inline_data: { mime_type: mime, data: image } },
       ] }],
-      generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: '3:4' } },
+      generationConfig: { responseModalities: ['IMAGE'], imageConfig: { aspectRatio: '3:2' } },
     });
     send(res, 200, out, origin);
   } catch (e) {

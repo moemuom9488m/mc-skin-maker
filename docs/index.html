@@ -77,12 +77,6 @@ canvas.px,img.px{image-rendering:pixelated;image-rendering:crisp-edges}
 textarea,input[type=text]{width:100%;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--ink);padding:10px 12px;font:inherit;resize:vertical}
 input[type=color]{width:38px;height:32px;border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:2px;cursor:pointer}
 input[type=range]{accent-color:var(--accent-strong)}
-.compare{position:relative;overflow:hidden;border-radius:16px;aspect-ratio:4/5;max-width:100%;user-select:none}
-.compare .layer{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
-.compare .bar{position:absolute;top:0;bottom:0;width:3px;background:var(--accent);transform:translateX(-1.5px);pointer-events:none}
-.compare .knob{position:absolute;top:50%;width:40px;height:40px;border-radius:999px;background:var(--accent);color:var(--accent-ink);transform:translate(-50%,-50%);display:flex;align-items:center;justify-content:center;font-weight:900;pointer-events:none;box-shadow:0 4px 14px rgba(0,0,0,.25)}
-.compare input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:ew-resize;margin:0}
-.compare .tagl{position:absolute;top:12px;padding:3px 10px;border-radius:999px;font-size:12px;background:rgba(0,0,0,.55);color:#fff}
 details.faq{border-bottom:1px solid var(--line)}
 details.faq summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;gap:16px;padding:18px 0;font-weight:700}
 details.faq summary::-webkit-details-marker{display:none}
@@ -549,21 +543,6 @@ function Cropper({src,an,face,setFace}){
   </div>`;
 }
 
-function Compare({before,img,aw,side}){
-  const [pos,setPos]=useState(50);
-  return html`<div class="compare checker">
-    <div class="layer" style=${{background:'var(--panel-2)'}}><img src=${before} alt="原始照片" class="max-w-full max-h-full object-contain" /></div>
-    <div class="layer" style=${{background:'linear-gradient(180deg,var(--accent-soft),var(--panel-2))',clipPath:`inset(0 0 0 ${pos}%)`}}>
-      <${Doll} img=${img} aw=${aw} side=${side} w=${120} />
-    </div>
-    <span class="tagl" style=${{left:'12px'}}>之前</span>
-    <span class="tagl" style=${{right:'12px'}}>之後</span>
-    <div class="bar" style=${{left:pos+'%'}}></div>
-    <div class="knob" style=${{left:pos+'%'}}>⇆</div>
-    <input id="compare" type="range" min="0" max="100" value=${pos} onInput=${e=>setPos(+e.target.value)} aria-label="之前之後比較滑桿" />
-  </div>`;
-}
-
 /* ---------- App ---------- */
 // config.js sets window.SKIN_API = {base:'https://<cloud-run-url>', needsCode:true|false}
 const API=window.SKIN_API||{};
@@ -845,10 +824,10 @@ function App(){
 
         <div ref=${resultRef} class="flex flex-col gap-4 min-w-0" style=${{scrollMarginTop:'72px'}}>
           <div class="flex flex-wrap items-center justify-between gap-3">
-            <div class="label">之前 / 之後 <small>拖曳中間的把手比較</small></div>
+            <div class="label">角色預覽</div>
             <${Seg} label="預覽方向" value=${side} onChange=${setSide} options=${[['front','正面'],['back','背面']]} />
           </div>
-          ${src&&skin&&html`<${Compare} before=${photo||src}img=${skin} aw=${aw} side=${side} />`}
+          ${skin&&html`<div class="checker rounded-2xl flex items-center justify-center py-8"><${Doll} img=${skin} aw=${aw} side=${side} w=${120} /></div>`}
 
           <div class="sub p-3">
             <div class="flex flex-wrap items-center justify-between gap-3 mb-2">

@@ -566,7 +566,8 @@ function figureMask(an){
     if((x>0&&!mask[p-1])||(x<w-1&&!mask[p+1])||(p>=w&&!mask[p-w])||(p<n-w&&!mask[p+w])) out[p]=0;
   }
   // The image model sometimes writes "FRONT"/"BACK" above or below the figure despite the prompt:
-  // drop character blobs lying wholly above or below the largest one (detached arms still overlap it)
+  // drop blobs lying wholly above or below the largest one with a clear empty gap between them.
+  // The head can sit 1-2px off the body once the rim is dropped, so small gaps don't count.
   const lab=new Int32Array(n).fill(-1), boxes=[];
   for(let s=0;s<n;s++){
     if(!out[s]||lab[s]>=0) continue;
@@ -581,8 +582,11 @@ function figureMask(an){
     boxes.push({cnt,miny,maxy});
   }
   if(boxes.length>1){
-    const big=boxes.reduce((a,b)=>b.cnt>a.cnt?b:a);
-    for(let p=0;p<n;p++){ const b=lab[p]>=0?boxes[lab[p]]:null; if(b&&(b.maxy<big.miny||b.miny>big.maxy)) out[p]=0; }
+    const big=boxes.reduce((a,b)=>b.cnt>a.cnt?b:a), gap=Math.max(5,Math.round(h*.012));
+    // grow the main span through blobs that touch it (head on top of body, feet below legs) before judging the rest
+    let lo=big.miny, hi=big.maxy, grew=true;
+    while(grew){ grew=false; for(const b of boxes){ if(b.maxy<lo&&lo-b.maxy<gap){ lo=b.miny; grew=true; } if(b.miny>hi&&b.miny-hi<gap){ hi=b.maxy; grew=true; } } }
+    for(let p=0;p<n;p++){ const b=lab[p]>=0?boxes[lab[p]]:null; if(b&&(b.maxy<lo||b.miny>hi)) out[p]=0; }
   }
   return out;
 }

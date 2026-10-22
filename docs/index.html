@@ -478,6 +478,27 @@ function buildSkin(an,f,col0,o,styleId,back){
       fill(F.bottom,(x)=>[px(Fr.x+x,Fr.y+h-1),-.12]);
     }
   }
+  // Second layer from the sampled first layer: texels that differ from the skin colour (hair, hat, ears, clothes,
+  // boots) are copied onto the outer layer so they stand off the body. The cape pass above has priority.
+  if(o.sampleBody&&o.layers){
+    const sk=one(col.skin), isSkin=(x,y)=>{ const i=(y*64+x)*4; return Math.hypot(D[i]-sk[0],D[i+1]-sk[1],D[i+2]-sk[2])<45; };
+    const outer=(b,ov,faces,rows)=>{
+      const F=box(...b), G=box(...ov);
+      for(const k of faces){
+        const r=F[k], t=G[k], n=k==='front'&&rows?Math.min(rows,r.h):r.h;
+        for(let y=0;y<n;y++)for(let x=0;x<r.w;x++){
+          const si=((r.y+y)*64+r.x+x)*4, di=((t.y+y)*64+t.x+x)*4;
+          if(D[di+3]||isSkin(r.x+x,r.y+y)) continue;
+          D[di]=D[si]; D[di+1]=D[si+1]; D[di+2]=D[si+2]; D[di+3]=255;
+        }
+      }
+    };
+    const sides=['front','back','right','left'];
+    if(o.layers.hat) outer([0,0,8,8,8],[32,0,8,8,8],['front','back','right','left','top'],3);
+    if(o.layers.jacket) outer([16,16,8,12,4],[16,32,8,12,4],sides);
+    if(o.layers.sleeves){ outer([40,16,aw,12,4],[40,32,aw,12,4],[...sides,'top']); outer([32,48,aw,12,4],[48,48,aw,12,4],[...sides,'top']); }
+    if(o.layers.pants){ outer([0,16,4,12,4],[0,32,4,12,4],sides); outer([16,48,4,12,4],[0,48,4,12,4],sides); }
+  }
   if(st.overlay) st.overlay({fill,aw});
   return img;
 }
@@ -831,7 +852,7 @@ function reviewPrompt(colors,isAi,hasPhoto,style,subject){
       :'Check: (1) is the yellow square on the face; (2) are the skin, hair, shirt, pants and shoes colors right compared with the source; (3) is the face readable (eyes visible, not a smear) and does it resemble the person; (4) is image 1 a clean front-facing figure (not turned to the side, not in profile, not cropped).',
     // In Minecraft held items are rendered separately, so one drawn into the AI figure must not reach the skin
     isAi?'Also check (5): does the figure in image 1 hold or carry anything (weapon, staff, sword, shield, bag, phone, toy)? A held item must not be part of a skin; parts of the costume itself (armor, claws, a cape) are not held items.':'',
-    `Reply with only JSON: {"score": integer 1-10, "issues": [up to 5 short sentences in Traditional Chinese], "face_box": [ymin, xmin, ymax, xmax] of the ${animal?'head front':'face'} in image 1 on a 0-1000 scale, "colors": ${animal?'{} (always empty for animals)':'{only the keys among skin, hair, shirt, pants, shoes whose color is clearly wrong, as "#rrggbb"}'}, ${isAi?'"held_item": "short name in Traditional Chinese of the item the figure holds, or an empty string if it holds nothing, never a word such as 空 or none", ':''}"regenerate": true only if image 1 itself is unusable (angled or profile view, cropped, wrong proportions, face unrecognizable${animal?', a pasted photo instead of pixel art':''}), "regenerate_hint": "short English instruction for the image model to fix it, or empty"}`,
+    `Reply with only JSON: {"score": integer 1-10, "issues": [up to 5 short sentences in Traditional Chinese], "face_box": [ymin, xmin, ymax, xmax] of the ${animal?'head front':'face'} in image 1 on a 0-1000 scale, "colors": ${animal?'{} (always empty for animals)':'{only the keys among skin, hair, shirt, pants, shoes whose color is clearly wrong, as "#rrggbb"}'}, ${isAi?'"held_item": "short name in Traditional Chinese of the item the figure holds, or an empty string if it holds nothing, never a word such as 空 or none", ':''}${isAi&&!animal?'"layers": {"hat": true if the figure has hair volume, a hat, a hood or ears standing off the head, "jacket": true if it wears a coat, jacket, hoodie or loose top over the body, "sleeves": true if it has loose or layered sleeves, "pants": true if it wears loose trousers, a skirt or shorts over the legs} (booleans only), ':''}"regenerate": true only if image 1 itself is unusable (angled or profile view, cropped, wrong proportions, face unrecognizable${animal?', a pasted photo instead of pixel art':''}), "regenerate_hint": "short English instruction for the image model to fix it, or empty"}`,
   ].filter(Boolean).join('\n');
 }
 
@@ -1059,7 +1080,9 @@ function App(){
   // subject box on the original photo (0-1 fractions), set by /api/locate and adjustable before generating
   const [subj,setSubj]=useState(null), [subjBusy,setSubjBusy]=useState(false);
   const [desc,setDesc]=useState('');
-  const [opt,setOpt]=useState({slim:false,sleeves:'short',texture:true,contrast:20,pattern:false,grid:true});
+  const [opt,setOpt]=useState({slim:false,sleeves:'short',texture:true,contrast:20,pattern:false,grid:true,layers:{hat:true,jacket:false,sleeves:false,pants:false}});
+  // the reviewer picks which second layers fit the figure; a manual toggle wins until a new photo
+  const layersManual=useRef(false);
   // automatic Classic/Slim result for the current AI figure; a manual choice in 皮膚設定 wins until a new photo
   const [build,setBuild]=useState(null); const slimManual=useRef(false);
   const [hover,setHover]=useState(null);
@@ -1084,7 +1107,7 @@ function App(){
     try{
       const img=await loadImage(dataUrl); const a=analyze(img); const f=detectFace(a);
       setSrc(dataUrl); setAn(a); setFace(f); setOver({}); setIsSample(sample); setFallbackUrl(null);
-      setPhoto(dataUrl); setAiSrc(null); setAiBack(null); setAiSheet(null); setAiUnder(null); setSrcKind('photo'); setPartsF(null); setPartsB(null); setBuild(null); slimManual.current=false;
+      setPhoto(dataUrl); setAiSrc(null); setAiBack(null); setAiSheet(null); setAiUnder(null); setSrcKind('photo'); setPartsF(null); setPartsB(null); setBuild(null); slimManual.current=false; layersManual.current=false;
       if(!sample) say(f.auto?'已自動找到臉部，可拖曳黃框微調。':'沒有偵測到明顯的臉，請手動把黃框拖到臉上。');
     }catch{ say('無法讀取這個檔案。請改用 JPG、PNG 或 WebP 圖片。'); }
   },[say]);
@@ -1196,6 +1219,10 @@ function App(){
           if(Math.hypot(c[0]-cur[0],c[1]-cur[1],c[2]-cur[2])>30){ o[k]=c; fixed.push(zh+'顏色'); }
         }
         if(Object.keys(o).length) setOver(p=>({...p,...o}));
+      }
+      if(isAi&&r.layers&&typeof r.layers==='object'&&!layersManual.current){
+        const l={}; for(const k of ['hat','jacket','sleeves','pants']) l[k]=r.layers[k]===true;
+        setOpt(o=>['hat','jacket','sleeves','pants'].every(k=>!!o.layers[k]===l[k])?o:{...o,layers:l});
       }
       const score=clamp(Math.round(Number(r.score)||0),1,10);
       const issues=Array.isArray(r.issues)?r.issues.slice(0,5).map(String):[];
@@ -1492,6 +1519,9 @@ function App(){
                 ${build&&html`<span class="text-xs muted">${slimManual.current?'已手動選擇；':''}自動判斷：${build.slim?'纖細 Alex':'經典 Steve'}（手臂約頭寬的 ${Math.round(build.ratio*100)}%）</span>`}</div>
               <div class="flex flex-wrap items-center gap-x-4 gap-y-2"><span class="text-sm w-16 muted">袖長</span>
                 <${Seg} label="袖長" value=${opt.sleeves} onChange=${v=>setO('sleeves',v)} options=${[['none','無袖'],['short','短袖'],['long','長袖']]} /></div>
+              ${isAi&&html`<div class="flex flex-wrap items-center gap-x-4 gap-y-2"><span class="text-sm w-16 muted">第二層</span>
+                ${[['hat','帽子／頭髮'],['jacket','外套'],['sleeves','袖子'],['pants','褲子']].map(([k,zh])=>html`<label key=${k} class="flex items-center gap-1.5 text-sm"><input type="checkbox" checked=${!!opt.layers[k]} onChange=${e=>{layersManual.current=true;setOpt(o=>({...o,layers:{...o.layers,[k]:e.target.checked}}));}} style=${{accentColor:'var(--accent-strong)'}} />${zh}</label>`)}
+                <span class="text-xs muted">${layersManual.current?'已手動選擇':'由 AI 審查自動判斷'}；把有別於膚色的部分複製到外層，讓它浮出來。</span></div>`}
               <div class="flex flex-wrap items-center gap-x-4 gap-y-2"><label for="contrast" class="text-sm w-16 muted">臉部對比</label>
                 <input id="contrast" type="range" min="0" max="80" value=${opt.contrast} onInput=${e=>setO('contrast',+e.target.value)} class="flex-1 min-w-[120px]" />
                 <span class="mono text-xs w-10 text-right">+${opt.contrast}%</span></div>
